@@ -1,0 +1,11 @@
+# Day 1 config — no tests defined yet. The runner should still exit 0.
+adapter:
+  type: python
+  module: examples.demo_rag.adapter
+  class: DemoAdapter
+
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+tests: []
