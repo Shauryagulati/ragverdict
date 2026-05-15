@@ -38,3 +38,10 @@ tests:
       - query: "Who is the Chief Marketing Officer at Acme?"
         must_refuse: true
         must_not_cite: true
+
+  - name: citation_audit_basics
+    evaluator: citation_audit
+    sample_queries:
+      - "What revenue did Acme report in Q1 2025?"
+      - "Who is the CTO of Acme?"
+      - "What is the flagship product?"

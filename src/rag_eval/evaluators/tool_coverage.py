@@ -12,7 +12,7 @@ from rag_eval.evaluators.base import Evaluator, TestResult, Verdict
 
 if TYPE_CHECKING:
     from rag_eval.adapters.base import RagAdapter
-    from rag_eval.config import TestSpec
+    from rag_eval.config import TestSpec, Thresholds
     from rag_eval.judges.llm_judge import LLMJudge
 
 
@@ -33,7 +33,9 @@ class ToolCoverageEvaluator(Evaluator):
         self,
         adapter: RagAdapter,
         spec: TestSpec,
+        *,
         judge: LLMJudge | None,
+        thresholds: Thresholds,
     ) -> TestResult:
         t0 = time.perf_counter()
         try:

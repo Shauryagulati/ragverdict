@@ -35,7 +35,10 @@ def test_cli_empty_tests_exits_zero(tmp_path: Path) -> None:
 
 
 def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
-    """Run the bundled demo config and confirm the evaluators wired through end-to-end."""
+    """Run the bundled demo config and confirm the evaluators wired through end-to-end.
+
+    Uses --no-judge so the test does not hit the Anthropic API in CI.
+    """
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -44,6 +47,7 @@ def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
             str(repo_root / "examples" / "demo_rag" / "config.yaml"),
             "--out-dir",
             str(tmp_path / "report"),
+            "--no-judge",
         ],
     )
     # Exit code may be 0 or 1 depending on demo quality — we just want clean wiring.

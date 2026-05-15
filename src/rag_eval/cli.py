@@ -28,10 +28,21 @@ def cli() -> None:
     show_default=True,
     help="Directory to write report.json and report.md.",
 )
-def run(config_path: Path, out_dir: Path) -> None:
+@click.option(
+    "--no-judge",
+    is_flag=True,
+    default=False,
+    help="Skip LLM-as-judge entirely. Hard assertions still run; WEAK verdicts and "
+    "citation support scoring are disabled.",
+)
+def run(config_path: Path, out_dir: Path, no_judge: bool) -> None:
     """Run the evaluation defined in CONFIG_PATH."""
     try:
-        runner = Runner.from_config_path(config_path, out_dir=out_dir)
+        runner = Runner.from_config_path(
+            config_path,
+            out_dir=out_dir,
+            judge=None if no_judge else "auto",
+        )
         _results, exit_code = runner.execute()
     except (ConfigError, AdapterLoadError, RunnerError) as exc:
         click.echo(f"error: {exc}", err=True)
