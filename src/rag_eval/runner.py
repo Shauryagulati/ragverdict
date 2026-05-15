@@ -82,6 +82,14 @@ class Runner:
             reporter.on_result(result)
 
         _, exit_code = reporter.finalize(results)
+        if self.judge is not None and (
+            self.judge.cache_read_tokens or self.judge.cache_creation_tokens
+        ):
+            reporter.console.print(
+                f"[dim]Judge prompt cache: "
+                f"{self.judge.cache_read_tokens} read, "
+                f"{self.judge.cache_creation_tokens} written.[/dim]"
+            )
         return results, exit_code
 
     def _maybe_init_judge(self) -> LLMJudge | None:

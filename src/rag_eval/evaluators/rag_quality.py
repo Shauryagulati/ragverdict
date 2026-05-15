@@ -105,7 +105,7 @@ class RagQualityEvaluator(Evaluator):
         for case in rq_spec.cases:
             try:
                 response = adapter.query(case.query)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 outcomes.append(
                     CaseOutcome(
                         case=case,
@@ -171,7 +171,7 @@ def _grade_case(
         if judge is not None:
             try:
                 refusal_verdict = judge.refusal(text, case.query)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 return CaseOutcome(
                     case=case,
                     verdict=Verdict.ERROR,
@@ -254,7 +254,7 @@ def _grade_case(
     try:
         faithfulness = judge.faithfulness(text, context_blob)
         relevance = judge.relevance(text, case.query)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return CaseOutcome(
             case=case,
             verdict=Verdict.ERROR,

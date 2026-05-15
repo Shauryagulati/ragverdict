@@ -88,7 +88,7 @@ class CitationAuditEvaluator(Evaluator):
         for query in ca_spec.sample_queries:
             try:
                 response = adapter.query(query)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 per_citation.append(
                     {"query": query, "error": f"adapter raised: {exc}"}
                 )
@@ -125,7 +125,7 @@ class CitationAuditEvaluator(Evaluator):
                 if judge is not None and citation.span:
                     try:
                         score = judge.faithfulness(citation.span, source.content)
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         entry["error"] = f"judge call failed: {exc}"
                     else:
                         entry["support_score"] = score.score

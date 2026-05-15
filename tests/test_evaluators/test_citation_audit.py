@@ -16,7 +16,6 @@ from rag_eval.evaluators.base import Verdict
 from rag_eval.evaluators.citation_audit import CitationAuditEvaluator
 from rag_eval.judges.llm_judge import JudgeScore, RefusalVerdict
 
-
 CORPUS = [
     SourceDoc(source_id="REV", content="Acme reported $5.2M in Q1 2025."),
     SourceDoc(source_id="LEADERSHIP", content="Jane Smith is CEO. Raj Patel is CTO."),

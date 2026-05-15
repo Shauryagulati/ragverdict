@@ -59,7 +59,9 @@ def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
         "tool_coverage_all",
         "direct_retrieval_basics",
         "hallucination_guardrail",
+        "citation_audit_basics",
     }
-    # tool_coverage_all should PASS — DemoAdapter fires both tools on the synthesized prompts.
     by_name = {t["name"]: t for t in payload["tests"]}
     assert by_name["tool_coverage_all"]["verdict"] == "PASS"
+    # citation_audit in --no-judge mode runs the dangling check only — should PASS.
+    assert by_name["citation_audit_basics"]["verdict"] == "PASS"

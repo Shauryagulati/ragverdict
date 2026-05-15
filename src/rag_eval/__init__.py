@@ -15,7 +15,6 @@ from rag_eval.adapters.base import (
 from rag_eval.evaluators.base import Evaluator, TestResult, Verdict
 
 __all__ = [
-    "__version__",
     "Citation",
     "ContextDoc",
     "Evaluator",
@@ -27,4 +26,5 @@ __all__ = [
     "ToolCall",
     "ToolSpec",
     "Verdict",
+    "__version__",
 ]

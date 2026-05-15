@@ -70,7 +70,7 @@ class ToolCoverageEvaluator(Evaluator):
             tool_t0 = time.perf_counter()
             try:
                 response = adapter.query(prompt)
-            except Exception as exc:  # noqa: BLE001 - any adapter error is a tool failure
+            except Exception as exc:
                 per_tool.append(
                     {
                         "tool": tool.name,

@@ -94,10 +94,11 @@ class Reporter:
     def _exit_code(self, counts: dict[Verdict, int]) -> int:
         if self._test_count == 0:
             return 0
-        if counts[Verdict.FAIL] > 0:
-            return 1
-        if counts[Verdict.ERROR] > 0 and counts[Verdict.ERROR] == self._test_count:
+        # All tests errored — typically infrastructure failure (judge unreachable).
+        if counts[Verdict.ERROR] == self._test_count:
             return 3
+        if counts[Verdict.FAIL] > 0 or counts[Verdict.ERROR] > 0:
+            return 1
         return 0
 
     def _write_json(self, results: list[TestResult]) -> None:
