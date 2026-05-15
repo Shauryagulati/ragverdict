@@ -1,4 +1,3 @@
-# Day 1 config — no tests defined yet. The runner should still exit 0.
 adapter:
   type: python
   module: examples.demo_rag.adapter
@@ -8,4 +7,34 @@ judge:
   provider: anthropic
   model: claude-sonnet-4-6
 
-tests: []
+thresholds:
+  faithfulness_weak: 0.7
+  relevance_weak: 0.7
+
+tests:
+  - name: tool_coverage_all
+    evaluator: tool_coverage
+    require_all_tools: true
+
+  - name: direct_retrieval_basics
+    evaluator: rag_quality
+    cases:
+      - query: "What revenue did Acme report in Q1 2025?"
+        must_mention: ["$5.2M"]
+        expects_citations: true
+      - query: "Who is the CTO of Acme?"
+        must_mention: ["Raj Patel"]
+        expects_citations: true
+      - query: "What is the flagship product?"
+        must_mention: ["RouteOps"]
+        expects_citations: true
+
+  - name: hallucination_guardrail
+    evaluator: rag_quality
+    cases:
+      - query: "What did Acme acquire in 2030?"
+        must_refuse: true
+        must_not_cite: true
+      - query: "Who is the Chief Marketing Officer at Acme?"
+        must_refuse: true
+        must_not_cite: true

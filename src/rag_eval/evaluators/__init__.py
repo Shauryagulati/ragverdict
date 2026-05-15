@@ -11,4 +11,15 @@ def register(cls: type[Evaluator]) -> type[Evaluator]:
     return cls
 
 
+def _autoload() -> None:
+    # Import the bundled evaluator modules so they self-register on the registry.
+    # Kept inside a function (not module-level) to avoid circular imports.
+    from rag_eval.evaluators import (  # noqa: F401
+        rag_quality,
+        tool_coverage,
+    )
+
+
+_autoload()
+
 __all__ = ["EVALUATORS", "Evaluator", "TestResult", "Verdict", "register"]

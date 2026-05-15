@@ -1,4 +1,4 @@
-"""Reporter — Rich live table during the run, JSON + Markdown serializers at the end."""
+"""Reporter — Rich Live table during the run, JSON + Markdown at the end."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from rich.console import Console
+from rich.live import Live
 from rich.table import Table
 
 from rag_eval.config import Config
@@ -28,6 +29,7 @@ class Reporter:
         self.console = Console()
         self._test_count = 0
         self._table: Table | None = None
+        self._live: Live | None = None
 
     def start(self, *, test_count: int) -> None:
         self._test_count = test_count
@@ -37,39 +39,57 @@ class Reporter:
             return
         self.console.print(f"Running [bold]{test_count}[/bold] test(s)…\n")
 
+        self._table = _build_results_table()
+        self._live = Live(
+            self._table,
+            console=self.console,
+            refresh_per_second=8,
+            transient=False,
+        )
+        self._live.__enter__()
+
     def on_result(self, result: TestResult) -> None:
         style = _VERDICT_STYLE.get(result.verdict, "white")
         verdict = f"[{style}]{result.verdict.value}[/{style}]"
-        detail = result.detail if len(result.detail) < 80 else result.detail[:77] + "…"
-        self.console.print(
-            f"  {verdict}  [bold]{result.name}[/bold] "
-            f"([dim]{result.evaluator}[/dim], {result.duration_ms}ms) "
-            f"{detail}"
-        )
+        detail = result.detail if len(result.detail) < 100 else result.detail[:97] + "…"
+        if self._table is not None:
+            self._table.add_row(
+                result.name,
+                result.evaluator,
+                verdict,
+                f"{result.duration_ms}ms",
+                detail,
+            )
+        else:
+            # No-table fallback (test_count == 0 path).
+            self.console.print(
+                f"  {verdict}  [bold]{result.name}[/bold] ({result.evaluator}) {detail}"
+            )
 
     def finalize(self, results: list[TestResult]) -> tuple[Table, int]:
+        if self._live is not None:
+            self._live.__exit__(None, None, None)
+            self._live = None
+
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self._write_json(results)
         self._write_markdown(results)
 
-        table = Table(title="Summary", title_style="bold")
-        table.add_column("Verdict")
-        table.add_column("Count", justify="right")
+        summary = Table(title="Summary", title_style="bold")
+        summary.add_column("Verdict")
+        summary.add_column("Count", justify="right")
         counts: dict[Verdict, int] = {v: 0 for v in Verdict}
         for r in results:
             counts[r.verdict] += 1
         for verdict in Verdict:
             style = _VERDICT_STYLE[verdict]
-            table.add_row(
-                f"[{style}]{verdict.value}[/{style}]",
-                str(counts[verdict]),
-            )
+            summary.add_row(f"[{style}]{verdict.value}[/{style}]", str(counts[verdict]))
         self.console.print()
-        self.console.print(table)
+        self.console.print(summary)
         self.console.print(f"\nReports written to [bold]{self.out_dir}/[/bold]")
 
         exit_code = self._exit_code(counts)
-        return table, exit_code
+        return summary, exit_code
 
     def _exit_code(self, counts: dict[Verdict, int]) -> int:
         if self._test_count == 0:
@@ -101,6 +121,16 @@ class Reporter:
                     f"{r.duration_ms}ms | {detail} |"
                 )
         (self.out_dir / "report.md").write_text("\n".join(lines) + "\n")
+
+
+def _build_results_table() -> Table:
+    table = Table(show_lines=False)
+    table.add_column("Test", style="bold")
+    table.add_column("Evaluator", style="dim")
+    table.add_column("Verdict")
+    table.add_column("Latency", justify="right")
+    table.add_column("Detail", overflow="fold")
+    return table
 
 
 def _result_to_dict(r: TestResult) -> dict[str, Any]:

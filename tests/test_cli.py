@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -14,10 +15,28 @@ def test_cli_version() -> None:
     assert "rag-eval" in result.output
 
 
-def test_cli_empty_tests_exits_zero(repo_root: Path, tmp_path: Path) -> None:
-    """Day 1 verification: empty tests list runs cleanly."""
+def test_cli_empty_tests_exits_zero(tmp_path: Path) -> None:
+    """Empty tests list runs cleanly."""
+    config = tmp_path / "empty.yaml"
+    config.write_text(
+        "adapter:\n"
+        "  type: python\n"
+        "  module: examples.demo_rag.adapter\n"
+        "  class: DemoAdapter\n"
+        "tests: []\n"
+    )
     runner = CliRunner()
-    # CliRunner doesn't change cwd by default — invoke with --out-dir into tmp_path.
+    result = runner.invoke(
+        cli, ["run", str(config), "--out-dir", str(tmp_path / "report")]
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "report" / "report.json").exists()
+    assert (tmp_path / "report" / "report.md").exists()
+
+
+def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
+    """Run the bundled demo config and confirm the evaluators wired through end-to-end."""
+    runner = CliRunner()
     result = runner.invoke(
         cli,
         [
@@ -27,6 +46,16 @@ def test_cli_empty_tests_exits_zero(repo_root: Path, tmp_path: Path) -> None:
             str(tmp_path / "report"),
         ],
     )
-    assert result.exit_code == 0, result.output
-    assert (tmp_path / "report" / "report.json").exists()
-    assert (tmp_path / "report" / "report.md").exists()
+    # Exit code may be 0 or 1 depending on demo quality — we just want clean wiring.
+    assert result.exit_code in (0, 1), result.output
+
+    payload = json.loads((tmp_path / "report" / "report.json").read_text())
+    test_names = {t["name"] for t in payload["tests"]}
+    assert test_names == {
+        "tool_coverage_all",
+        "direct_retrieval_basics",
+        "hallucination_guardrail",
+    }
+    # tool_coverage_all should PASS — DemoAdapter fires both tools on the synthesized prompts.
+    by_name = {t["name"]: t for t in payload["tests"]}
+    assert by_name["tool_coverage_all"]["verdict"] == "PASS"

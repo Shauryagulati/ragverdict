@@ -95,38 +95,55 @@ class DemoAdapter(RagAdapter):
 
     # ---------- internals ----------
 
+    # Minimum prompt-token hits in a paragraph for it to count as a match. Anything below
+    # this threshold triggers a refusal — the demo's stand-in for an "out of corpus" check.
+    MIN_HITS = 2
+
+    _STOPWORDS = frozenset(
+        {
+            "the", "and", "for", "with", "what", "who", "did", "are", "was", "has",
+            "is", "of", "in", "on", "at", "to", "a", "an", "by", "or", "be", "it",
+            "this", "that", "any", "all", "from", "have", "had", "does", "do", "as",
+        }
+    )
+
     def _retrieve(self, prompt: str) -> list[ContextDoc]:
-        lower = prompt.lower()
-        # Score each doc by counting unique prompt-term hits in its body. Cheap and
-        # deterministic — fine for a demo, terrible for production. That is the point.
-        scored: list[tuple[float, SourceDoc, str]] = []
+        tokens = self._tokens(prompt.lower())
+        if not tokens:
+            return []
+        scored: list[tuple[int, SourceDoc, str]] = []
         for doc in self._docs.values():
-            chunk = self._best_chunk(doc.content, lower)
-            if chunk is None:
-                continue
-            hits = sum(1 for tok in self._tokens(lower) if tok in doc.content.lower())
-            scored.append((float(hits), doc, chunk))
+            hits, chunk = self._best_chunk(doc.content, tokens)
+            if hits >= self.MIN_HITS and chunk is not None:
+                scored.append((hits, doc, chunk))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [
-            ContextDoc(source_id=doc.source_id, chunk=chunk, score=score)
+            ContextDoc(source_id=doc.source_id, chunk=chunk, score=float(score))
             for score, doc, chunk in scored[:3]
-            if score > 0
         ]
 
-    @staticmethod
-    def _tokens(text: str) -> list[str]:
-        return [t for t in "".join(c if c.isalnum() else " " for c in text).split() if len(t) > 3]
+    @classmethod
+    def _tokens(cls, text: str) -> list[str]:
+        return [
+            t
+            for t in "".join(c if c.isalnum() else " " for c in text).split()
+            if len(t) >= 2 and t not in cls._STOPWORDS
+        ]
 
-    @staticmethod
-    def _best_chunk(body: str, prompt_lower: str) -> str | None:
-        # Return the first paragraph that contains any 4+ char token from the prompt.
+    @classmethod
+    def _best_chunk(cls, body: str, tokens: list[str]) -> tuple[int, str | None]:
+        """Pick the paragraph with the most token hits. Returns (hit_count, chunk)."""
+        best_hits = 0
+        best_chunk: str | None = None
         for para in (p.strip() for p in body.split("\n\n")):
             if not para or para.startswith("#"):
                 continue
-            tokens = DemoAdapter._tokens(prompt_lower)
-            if any(tok in para.lower() for tok in tokens):
-                return para
-        return None
+            lower = para.lower()
+            hits = sum(1 for tok in tokens if tok in lower)
+            if hits > best_hits:
+                best_hits = hits
+                best_chunk = para
+        return best_hits, best_chunk
 
     def _tool_calls_for(self, prompt: str) -> list[ToolCall]:
         calls: list[ToolCall] = []

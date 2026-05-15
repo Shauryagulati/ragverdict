@@ -85,6 +85,7 @@ class TestSpec(BaseModel):
     evaluators can evolve their case shapes without churning Config.
     """
 
+    __test__ = False  # tell pytest this is not a test class
     model_config = ConfigDict(extra="allow")
 
     name: str
