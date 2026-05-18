@@ -1,5 +1,9 @@
 # rag-eval
 
+[![CI](https://github.com/Shauryagulati/rag-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/Shauryagulati/rag-eval/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/Shauryagulati/rag-eval/blob/main/pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 **pytest for RAG agents.** Behavioral audits of any RAG system — tool coverage, retrieval
 quality, citation verification, hallucination guardrails — with PASS / FAIL / WEAK verdicts,
 not floating-point metric averages.
