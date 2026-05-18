@@ -1,6 +1,6 @@
 """rag-eval — pytest for RAG agents."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from rag_eval.adapters.base import (
     Citation,

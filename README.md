@@ -46,13 +46,18 @@ the system *behaves correctly*, with PASS/FAIL/WEAK verdicts that map cleanly to
 - **`citation_audit`** — Verifies every `[src:ID]` citation resolves to a real document in
   the agent's corpus, then asks the judge whether the cited claim is actually supported by
   the source. Dangling citations are a hard `FAIL`.
+- **`edge_cases`** *(v0.2)* — Input-boundary failure modes: `long_input` (10K-char
+  prompts, timeout-bounded), `multi_turn` (conversation-context recall), `contradiction`
+  (false premises must be pushed back on, judge-graded with `--no-judge` heuristic
+  fallback), and `empty_input` (clean rejection). **None of the four competitors do this
+  either.**
 
 ## Quickstart
 
 ### 1. Install
 
 ```bash
-pip install -e ".[dev]"  # from a clone; PyPI release coming in v0.2
+pip install -e ".[dev]"  # from a clone; PyPI release pending
 export ANTHROPIC_API_KEY=sk-ant-…  # required for the LLM judge
 ```
 
@@ -62,8 +67,8 @@ export ANTHROPIC_API_KEY=sk-ant-…  # required for the LLM judge
 rag-eval run examples/demo_rag/config.yaml
 ```
 
-This runs four tests against a tiny reference RAG agent (`DemoAdapter`) over a fictional
-"Acme Corp" corpus, exercising all three evaluators.
+This runs five tests against a tiny reference RAG agent (`DemoAdapter`) over a fictional
+"Acme Corp" corpus, exercising all four evaluators.
 
 To run without burning API tokens:
 
@@ -172,10 +177,10 @@ After each run, two files land in `./report/` (override with `--out-dir`):
 
 ## Roadmap
 
-V0 (this release) is intentionally small. V1 candidates:
+v0.2 ships the edge-case battery. Next up:
 
-- Edge-case battery (long input, multi-turn coherence, contradiction, auth negatives)
 - Write-tool safety evaluator (preview-only verification, version chain checks)
+- `auth_negative` kind for the `edge_cases` evaluator (requires adapter ABC extension)
 - Native `OpenAI` / `LangChain` adapters
 - Concurrent test execution
 - Hosted dashboard with regression tracking across runs

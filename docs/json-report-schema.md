@@ -117,6 +117,39 @@ A dangling citation entry has `"resolved": false` and a `detail` describing the 
 Per-citation entries without a `support_score` indicate either no judge was configured
 or the citation had no `span` to evaluate.
 
+### `edge_cases`
+
+```jsonc
+{
+  "metrics": {
+    "cases_total":   4.0,
+    "cases_passed":  3.0,
+    "cases_failed":  1.0,
+    "cases_errored": 0.0
+  },
+  "artifacts": {
+    "cases": [
+      {
+        "kind":          "long_input",            // long_input | multi_turn | contradiction | empty_input
+        "verdict":       "PASS",                  // PASS | FAIL | ERROR (no WEAK — binary safety properties)
+        "detail":        "handled 10000-char prompt in <30.0s",
+        "response_text": "..."
+      },
+      {
+        "kind":          "contradiction",
+        "verdict":       "FAIL",
+        "detail":        "no pushback detected — heuristic fallback; install judge for reliable grading",
+        "response_text": "The XYZ acquisition was driven by margin expansion."
+      }
+    ]
+  }
+}
+```
+
+`edge_cases` never emits `WEAK` — each case is a binary safety property. The
+contradiction kind's detail will reference the judge's reasoning when a judge is
+configured, or note the heuristic fallback when running with `--no-judge`.
+
 ## Stability notes
 
 - **`verdict`** values (`PASS`/`WEAK`/`FAIL`/`ERROR`) are stable.
