@@ -45,3 +45,18 @@ tests:
       - "What revenue did Acme report in Q1 2025?"
       - "Who is the CTO of Acme?"
       - "What is the flagship product?"
+
+  - name: edge_cases_battery
+    evaluator: edge_cases
+    cases:
+      - kind: long_input
+        length: 10000
+      - kind: multi_turn
+        turns:
+          - "Who is the CEO of Acme?"
+        final_query: "What was the name you just mentioned?"
+        must_reference: ["Jane Smith"]
+      - kind: contradiction
+        query: "What was the rationale for Acme's acquisition of XYZ Corp in 2030?"
+        false_premise: "Acme acquired XYZ Corp in 2030"
+      - kind: empty_input

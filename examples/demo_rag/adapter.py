@@ -62,7 +62,28 @@ class DemoAdapter(RagAdapter):
         conversation: list[Message] | None = None,
     ) -> RagResponse:
         t0 = time.perf_counter()
-        retrieved = self._retrieve(prompt)
+
+        # Edge-case handling — keeps `edge_cases` happy without complicating the
+        # golden-path code that drives the other three evaluators.
+        if not prompt.strip():
+            return RagResponse(
+                text="I cannot process empty input — please provide a question.",
+                raw={"latency_ms": int((time.perf_counter() - t0) * 1000)},
+            )
+
+        # Fold prior user turns into retrieval so multi-turn references work
+        # ("What was the name you mentioned?" needs the earlier "Who is the CEO?"
+        # to find Jane Smith in leadership.md). Keeps the demo deterministic
+        # rather than re-asking the model.
+        search_text = prompt
+        if conversation:
+            prior_user_turns = " ".join(
+                m.content for m in conversation if m.role == "user"
+            )
+            if prior_user_turns:
+                search_text = f"{prior_user_turns} {prompt}"
+
+        retrieved = self._retrieve(search_text)
         tool_calls = self._tool_calls_for(prompt)
 
         if not retrieved:

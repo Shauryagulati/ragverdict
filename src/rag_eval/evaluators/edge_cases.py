@@ -120,6 +120,12 @@ _PUSHBACK_HINTS = (
     "not aware",
     "could you clarify",
     "where did you",
+    # A grounded refusal to engage with an unsupported premise IS pushback —
+    # the agent is declining to validate the premise by answering. Narrower
+    # phrasings ("could not find any documents") count; broad refusals like
+    # "I cannot answer" do not (could also fire on legitimate out-of-corpus).
+    "could not find",
+    "no documents",
 )
 
 

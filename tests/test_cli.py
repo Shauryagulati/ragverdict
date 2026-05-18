@@ -60,8 +60,19 @@ def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
         "direct_retrieval_basics",
         "hallucination_guardrail",
         "citation_audit_basics",
+        "edge_cases_battery",
     }
     by_name = {t["name"]: t for t in payload["tests"]}
     assert by_name["tool_coverage_all"]["verdict"] == "PASS"
     # citation_audit in --no-judge mode runs the dangling check only — should PASS.
     assert by_name["citation_audit_basics"]["verdict"] == "PASS"
+    # edge_cases assert per-case: three hard-assertion kinds (long_input, multi_turn,
+    # empty_input) should PASS; contradiction is expected to FAIL because the demo's
+    # substring-RAG doesn't push back on false premises — that's *exactly* the failure
+    # mode the contradiction kind is designed to catch. Demonstrates the evaluator
+    # doing its job on the bundled reference adapter.
+    ec_cases = {c["kind"]: c for c in by_name["edge_cases_battery"]["artifacts"]["cases"]}
+    assert ec_cases["long_input"]["verdict"] == "PASS"
+    assert ec_cases["multi_turn"]["verdict"] == "PASS"
+    assert ec_cases["empty_input"]["verdict"] == "PASS"
+    assert ec_cases["contradiction"]["verdict"] == "FAIL"
