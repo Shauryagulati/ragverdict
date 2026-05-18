@@ -16,6 +16,7 @@ def _autoload() -> None:
     # Kept inside a function (not module-level) to avoid circular imports.
     from rag_eval.evaluators import (  # noqa: F401
         citation_audit,
+        edge_cases,
         rag_quality,
         tool_coverage,
     )

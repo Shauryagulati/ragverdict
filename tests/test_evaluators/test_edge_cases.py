@@ -1,15 +1,47 @@
-"""Step 1 — Pydantic spec validation for the edge_cases evaluator.
+"""Tests for the edge_cases evaluator.
 
-Verifies the discriminated-union dispatch and the per-kind field constraints
-defined in the v0.2.0 design spec. Evaluator behavior tests land in later steps.
+Layered top-down:
+  1. Pydantic spec validation (step 1 of the design spec).
+  2. Per-kind handler behavior using fake adapters (steps 2-5).
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
-from rag_eval.evaluators.edge_cases import EdgeCasesSpec
+from rag_eval.adapters.base import Message, RagAdapter, RagResponse
+from rag_eval.config import TestSpec, Thresholds
+from rag_eval.evaluators.base import Verdict
+from rag_eval.evaluators.edge_cases import EdgeCasesEvaluator, EdgeCasesSpec
+
+
+@dataclass
+class FakeAdapter(RagAdapter):
+    handler: Callable[[str], RagResponse] = lambda p: RagResponse(text="")
+
+    def query(
+        self,
+        prompt: str,
+        *,
+        conversation: list[Message] | None = None,
+    ) -> RagResponse:
+        return self.handler(prompt)
+
+
+def _spec(**kw: Any) -> TestSpec:
+    return TestSpec(name="t", evaluator="edge_cases", **kw)
+
+
+def _run(adapter: RagAdapter, **spec_kw: Any) -> Any:
+    return EdgeCasesEvaluator().run(
+        adapter, _spec(**spec_kw), judge=None, thresholds=Thresholds()
+    )
 
 
 def test_empty_cases_list_validates() -> None:
@@ -160,3 +192,195 @@ def test_discriminator_dispatches_heterogeneous_cases() -> None:
         "contradiction",
         "empty_input",
     ]
+
+
+# --- Evaluator behavior: long_input ---------------------------------------
+
+
+def test_long_input_pass_when_adapter_handles_it() -> None:
+    seen_lengths: list[int] = []
+
+    def handler(prompt: str) -> RagResponse:
+        seen_lengths.append(len(prompt))
+        return RagResponse(text="The text is about the letter 'a'.")
+
+    result = _run(
+        FakeAdapter(handler=handler),
+        cases=[{"kind": "long_input", "length": 5000}],
+    )
+    assert result.verdict == Verdict.PASS
+    assert result.metrics["cases_passed"] == 1
+    # Prompt should be close to requested length (within ~60 chars for the
+    # question suffix). Verifies the filler construction is right.
+    assert 4900 <= seen_lengths[0] <= 5100
+
+
+def test_long_input_fail_when_adapter_raises() -> None:
+    def truncating(prompt: str) -> RagResponse:
+        if len(prompt) > 1000:
+            raise ValueError("input too long")
+        return RagResponse(text="ok")
+
+    result = _run(
+        FakeAdapter(handler=truncating),
+        cases=[{"kind": "long_input", "length": 5000}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "adapter raised" in result.detail
+
+
+def test_long_input_fail_on_empty_response() -> None:
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="   ")),
+        cases=[{"kind": "long_input", "length": 2000}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "empty response" in result.detail
+
+
+def test_long_input_fail_on_timeout() -> None:
+    """A slow adapter must trip the timeout path. Uses a tiny timeout (0.1s) +
+    a sleep(0.5) so the test stays fast."""
+
+    def slow(prompt: str) -> RagResponse:
+        time.sleep(0.5)
+        return RagResponse(text="too late")
+
+    result = _run(
+        FakeAdapter(handler=slow),
+        cases=[{"kind": "long_input", "length": 500, "timeout_s": 0.1}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "timed out" in result.detail
+
+
+# --- Evaluator behavior: empty_input --------------------------------------
+
+
+def test_empty_input_pass_when_adapter_raises_and_allow_error_default() -> None:
+    def raising(prompt: str) -> RagResponse:
+        raise ValueError("empty prompt")
+
+    result = _run(
+        FakeAdapter(handler=raising),
+        cases=[{"kind": "empty_input"}],
+    )
+    assert result.verdict == Verdict.PASS
+    # On full PASS the test-level detail is just the count; per-case detail lives in artifacts.
+    assert "raised cleanly" in result.artifacts["cases"][0]["detail"]
+
+
+def test_empty_input_pass_when_adapter_refuses_and_allow_refusal_default() -> None:
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="Please provide a question.")),
+        cases=[{"kind": "empty_input"}],
+    )
+    assert result.verdict == Verdict.PASS
+    case_detail = result.artifacts["cases"][0]["detail"]
+    assert "refused" in case_detail or "empty" in case_detail
+
+
+def test_empty_input_fail_when_adapter_answers_substantively() -> None:
+    result = _run(
+        FakeAdapter(
+            handler=lambda p: RagResponse(text="Sure — Acme's CEO is Jane Smith.")
+        ),
+        cases=[{"kind": "empty_input"}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "substantively" in result.detail
+
+
+def test_empty_input_fail_when_raises_but_allow_error_false() -> None:
+    def raising(prompt: str) -> RagResponse:
+        raise RuntimeError("kaboom")
+
+    result = _run(
+        FakeAdapter(handler=raising),
+        cases=[{"kind": "empty_input", "allow_error": False}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "allow_error=False" in result.detail
+
+
+def test_empty_input_fail_when_refuses_but_allow_refusal_false() -> None:
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="Please provide a question.")),
+        cases=[{"kind": "empty_input", "allow_refusal": False}],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "allow_refusal=False" in result.detail
+
+
+def test_empty_input_pass_when_response_is_blank_and_allow_refusal_default() -> None:
+    """A blank string back is treated as a degenerate refusal (no hard answer)."""
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="")),
+        cases=[{"kind": "empty_input"}],
+    )
+    assert result.verdict == Verdict.PASS
+
+
+# --- Evaluator behavior: rollup, errors, dispatch -------------------------
+
+
+def test_aggregates_worst_verdict_across_kinds() -> None:
+    """A PASS + a FAIL should aggregate to FAIL."""
+
+    def handler(prompt: str) -> RagResponse:
+        # Long-input branch will see a long prompt; empty-input branch sees "".
+        if prompt == "":
+            return RagResponse(text="Sure — here's a substantive answer.")  # FAIL
+        return RagResponse(text="Acknowledged.")  # PASS
+
+    result = _run(
+        FakeAdapter(handler=handler),
+        cases=[
+            {"kind": "long_input", "length": 500},
+            {"kind": "empty_input"},
+        ],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert result.metrics["cases_passed"] == 1
+    assert result.metrics["cases_failed"] == 1
+
+
+def test_error_when_no_cases() -> None:
+    result = _run(FakeAdapter(handler=lambda p: RagResponse(text="")))
+    assert result.verdict == Verdict.ERROR
+    assert "no cases" in result.detail
+
+
+def test_error_on_invalid_spec() -> None:
+    """A malformed case dict surfaces as Verdict.ERROR with the validation message."""
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="ok")),
+        cases=[{"kind": "long_input", "length": -5}],
+    )
+    assert result.verdict == Verdict.ERROR
+    assert "invalid edge_cases spec" in result.detail
+
+
+def test_unimplemented_kinds_surface_as_error_for_now() -> None:
+    """multi_turn and contradiction land in later steps. Until then they're ERROR,
+    not silent-pass. This test is replaced by real behavior tests in steps 3 and 5."""
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="x")),
+        cases=[
+            {
+                "kind": "multi_turn",
+                "turns": ["a"],
+                "final_query": "b",
+                "must_reference": ["c"],
+            },
+        ],
+    )
+    assert result.verdict == Verdict.ERROR
+    assert "not yet implemented" in result.detail
+
+
+def test_registered_under_edge_cases_name() -> None:
+    """Confirms the @register decorator wired the evaluator into the registry."""
+    from rag_eval.evaluators import EVALUATORS
+
+    assert EVALUATORS["edge_cases"] is EdgeCasesEvaluator
