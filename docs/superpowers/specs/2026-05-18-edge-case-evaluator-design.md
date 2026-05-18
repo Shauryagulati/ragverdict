@@ -1,7 +1,6 @@
 # Edge-Case Battery Evaluator — Design Spec
 
 **Date:** 2026-05-18
-**Author:** Shaurya Gulati
 **Status:** Draft for approval
 **Target ship:** v0.2.0
 **Builds on:** [`2026-05-15-rag-eval-design.md`](./2026-05-15-rag-eval-design.md) (V0 spec)
@@ -21,8 +20,8 @@ production failures actually live:
 - An agent that crashes — or worse, answers — when given empty input.
 
 None of the four incumbents (RAGAs, DeepEval, TruLens, Phoenix) test these directly. They
-are operational failures that score-based evals miss. This evaluator productizes the
-edge-case categories that fell out of the 34-turn audit at the origin engagement.
+are operational failures that score-based evals miss. This evaluator covers the four
+input-boundary categories most likely to surface in production.
 
 ### Pitch
 
@@ -160,11 +159,11 @@ class EdgeCasesSpec(BaseModel):
 - **PASS:** Response text contains every substring in `must_reference` (case-insensitive).
 - **FAIL:** Any required substring missing.
 
-> **Note on the placeholder assistant turns:** This is a known simplification. A real
-> production audit would prefer the agent's actual prior responses — but capturing those
-> requires multi-call orchestration that complicates the case for marginal gain. The
-> placeholder approach still verifies the agent *uses* the conversation history, which is
-> the property under test. Documented in the evaluator docstring.
+> **Note on the placeholder assistant turns:** This is a known simplification. A more
+> thorough multi-turn test would use the agent's actual prior responses — but capturing
+> those requires multi-call orchestration that complicates the case for marginal gain.
+> The placeholder approach still verifies the agent *uses* the conversation history,
+> which is the property under test. Documented in the evaluator docstring.
 
 #### `contradiction`
 

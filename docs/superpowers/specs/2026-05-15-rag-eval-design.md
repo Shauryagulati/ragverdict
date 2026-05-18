@@ -1,7 +1,6 @@
 # rag-eval Design Spec
 
 **Date:** 2026-05-15
-**Author:** Shaurya Gulati
 **Status:** Draft for approval
 **Target ship:** End of week (2026-05-22)
 
