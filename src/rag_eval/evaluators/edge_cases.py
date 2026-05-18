@@ -104,6 +104,24 @@ _EMPTY_REJECTION_HINTS = (
     "unable to",
 )
 
+# Phrases that suggest the agent pushed back on a false premise. Used only as a
+# fallback when --no-judge runs are configured; the judge's pushback() rubric is
+# the authoritative grader. List intentionally narrow — false positives let bad
+# behavior slip; false negatives just nudge the user to install a judge.
+_PUSHBACK_HINTS = (
+    "actually,",
+    "that's not",
+    "that is not",
+    "incorrect",
+    "i don't have",
+    "i do not have",
+    "no record",
+    "no, ",
+    "not aware",
+    "could you clarify",
+    "where did you",
+)
+
 
 # --- Evaluator ------------------------------------------------------------
 
@@ -155,19 +173,11 @@ class EdgeCasesEvaluator(Evaluator):
                 outcomes.append(_run_long_input(case, adapter))
             elif isinstance(case, MultiTurnCase):
                 outcomes.append(_run_multi_turn(case, adapter))
-            elif isinstance(case, EmptyInputCase):
-                outcomes.append(_run_empty_input(case, adapter))
+            elif isinstance(case, ContradictionCase):
+                outcomes.append(_run_contradiction(case, adapter, judge))
             else:
-                # contradiction lands in step 5. Until then, surface as ERROR
-                # so the suite is honest about coverage.
-                outcomes.append(
-                    CaseOutcome(
-                        case=case,
-                        verdict=Verdict.ERROR,
-                        detail=f"kind {case.kind!r} not yet implemented",
-                        response_text="",
-                    )
-                )
+                # EmptyInputCase — the only branch left after the discriminated union.
+                outcomes.append(_run_empty_input(case, adapter))
 
         worst = _worst_verdict([o.verdict for o in outcomes])
         passed = sum(1 for o in outcomes if o.verdict == Verdict.PASS)
@@ -301,6 +311,71 @@ def _run_multi_turn(case: MultiTurnCase, adapter: RagAdapter) -> CaseOutcome:
         verdict=Verdict.PASS,
         detail=f"recalled all {len(case.must_reference)} required reference(s)",
         response_text=response.text,
+    )
+
+
+def _run_contradiction(
+    case: ContradictionCase,
+    adapter: RagAdapter,
+    judge: LLMJudge | None,
+) -> CaseOutcome:
+    """Send a query with a false premise; PASS iff the agent pushes back.
+
+    With a judge, the pushback() rubric is the authoritative grader. Without one
+    (--no-judge / CI), fall back to a substring heuristic over _PUSHBACK_HINTS.
+    The heuristic is intentionally narrow — false positives let bad behavior
+    slip, false negatives just nudge the user to install a judge.
+    """
+    try:
+        response = adapter.query(case.query)
+    except Exception as exc:  # adapter contract is "anything goes"
+        return CaseOutcome(
+            case=case,
+            verdict=Verdict.ERROR,
+            detail=f"adapter raised on contradiction query: {exc}",
+            response_text="",
+        )
+
+    text = response.text
+
+    if judge is not None:
+        try:
+            verdict = judge.pushback(text, case.false_premise)
+        except Exception as exc:  # judge contract: anything could go wrong
+            return CaseOutcome(
+                case=case,
+                verdict=Verdict.ERROR,
+                detail=f"judge.pushback() failed: {exc}",
+                response_text=text,
+            )
+        if verdict.handled_correctly:
+            return CaseOutcome(
+                case=case,
+                verdict=Verdict.PASS,
+                detail=f"pushed back: {verdict.reasoning}",
+                response_text=text,
+            )
+        return CaseOutcome(
+            case=case,
+            verdict=Verdict.FAIL,
+            detail=f"accepted false premise: {verdict.reasoning}",
+            response_text=text,
+        )
+
+    # Heuristic fallback for --no-judge runs.
+    lower = text.lower()
+    if any(hint in lower for hint in _PUSHBACK_HINTS):
+        return CaseOutcome(
+            case=case,
+            verdict=Verdict.PASS,
+            detail="heuristic pushback match (install judge for reliable grading)",
+            response_text=text,
+        )
+    return CaseOutcome(
+        case=case,
+        verdict=Verdict.FAIL,
+        detail="no pushback detected — heuristic fallback; install judge for reliable grading",
+        response_text=text,
     )
 
 

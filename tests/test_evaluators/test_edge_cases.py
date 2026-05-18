@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -19,6 +19,7 @@ from rag_eval.adapters.base import Message, RagAdapter, RagResponse
 from rag_eval.config import TestSpec, Thresholds
 from rag_eval.evaluators.base import Verdict
 from rag_eval.evaluators.edge_cases import EdgeCasesEvaluator, EdgeCasesSpec
+from rag_eval.judges.llm_judge import LLMJudge, PushbackVerdict
 
 
 @dataclass
@@ -38,10 +39,37 @@ def _spec(**kw: Any) -> TestSpec:
     return TestSpec(name="t", evaluator="edge_cases", **kw)
 
 
-def _run(adapter: RagAdapter, **spec_kw: Any) -> Any:
+def _run(
+    adapter: RagAdapter,
+    *,
+    judge: LLMJudge | None = None,
+    **spec_kw: Any,
+) -> Any:
     return EdgeCasesEvaluator().run(
-        adapter, _spec(**spec_kw), judge=None, thresholds=Thresholds()
+        adapter, _spec(**spec_kw), judge=judge, thresholds=Thresholds()
     )
+
+
+@dataclass
+class _StubPushbackJudge:
+    """Minimal judge stub for contradiction tests — only implements pushback().
+
+    The evaluator only calls judge.pushback() for contradiction cases, so this
+    is the smallest surface that satisfies the type contract (cast'd at the
+    call site since we deliberately don't subclass LLMJudge).
+    """
+
+    handled_correctly: bool
+    reasoning: str = "stub verdict"
+    raises: Exception | None = None
+
+    def pushback(self, response_text: str, false_premise: str) -> PushbackVerdict:
+        if self.raises is not None:
+            raise self.raises
+        return PushbackVerdict(
+            handled_correctly=self.handled_correctly,
+            reasoning=self.reasoning,
+        )
 
 
 def test_empty_cases_list_validates() -> None:
@@ -361,15 +389,100 @@ def test_error_on_invalid_spec() -> None:
     assert "invalid edge_cases spec" in result.detail
 
 
-def test_contradiction_kind_surfaces_as_error_for_now() -> None:
-    """contradiction lands in step 5. Until then it's ERROR, not silent-pass.
-    This test is replaced by real behavior tests in step 5."""
+# --- Evaluator behavior: contradiction ------------------------------------
+
+
+def _contradiction_case() -> dict[str, str]:
+    return {
+        "kind": "contradiction",
+        "query": "What was the rationale for Acme's acquisition of XYZ in 2030?",
+        "false_premise": "Acme acquired XYZ in 2030",
+    }
+
+
+def test_contradiction_pass_when_judge_says_pushed_back() -> None:
+    """CorrectingAdapter + judge handled_correctly=True → PASS."""
+    judge = cast(LLMJudge, _StubPushbackJudge(handled_correctly=True))
     result = _run(
-        FakeAdapter(handler=lambda p: RagResponse(text="x")),
-        cases=[{"kind": "contradiction", "query": "q", "false_premise": "p"}],
+        FakeAdapter(
+            handler=lambda p: RagResponse(text="I have no record of that.")
+        ),
+        judge=judge,
+        cases=[_contradiction_case()],
+    )
+    assert result.verdict == Verdict.PASS
+    assert "pushed back" in result.artifacts["cases"][0]["detail"]
+
+
+def test_contradiction_fail_when_judge_says_complied() -> None:
+    """CompliantAdapter + judge handled_correctly=False → FAIL."""
+    judge = cast(
+        LLMJudge,
+        _StubPushbackJudge(
+            handled_correctly=False, reasoning="repeated the false premise"
+        ),
+    )
+    result = _run(
+        FakeAdapter(
+            handler=lambda p: RagResponse(text="The acquisition was strategic.")
+        ),
+        judge=judge,
+        cases=[_contradiction_case()],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "accepted false premise" in result.detail
+
+
+def test_contradiction_pass_via_heuristic_when_no_judge() -> None:
+    """No judge + response matches _PUSHBACK_HINTS → PASS (with caveat in detail)."""
+    result = _run(
+        FakeAdapter(
+            handler=lambda p: RagResponse(text="Actually, I don't have any record of that.")
+        ),
+        cases=[_contradiction_case()],
+    )
+    assert result.verdict == Verdict.PASS
+    assert "heuristic" in result.artifacts["cases"][0]["detail"]
+
+
+def test_contradiction_fail_via_heuristic_when_no_judge_and_no_pushback() -> None:
+    """No judge + no pushback phrases → FAIL with caveat."""
+    result = _run(
+        FakeAdapter(
+            handler=lambda p: RagResponse(
+                text="The XYZ acquisition was driven by margin expansion."
+            )
+        ),
+        cases=[_contradiction_case()],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "no pushback detected" in result.detail
+
+
+def test_contradiction_error_when_judge_raises() -> None:
+    judge = cast(
+        LLMJudge,
+        _StubPushbackJudge(handled_correctly=True, raises=RuntimeError("api down")),
+    )
+    result = _run(
+        FakeAdapter(handler=lambda p: RagResponse(text="anything")),
+        judge=judge,
+        cases=[_contradiction_case()],
     )
     assert result.verdict == Verdict.ERROR
-    assert "not yet implemented" in result.detail
+    assert "judge.pushback() failed" in result.detail
+
+
+def test_contradiction_error_when_adapter_raises() -> None:
+    def raising(prompt: str) -> RagResponse:
+        raise ConnectionError("network")
+
+    result = _run(
+        FakeAdapter(handler=raising),
+        cases=[_contradiction_case()],
+    )
+    assert result.verdict == Verdict.ERROR
+    assert "adapter raised on contradiction" in result.detail
 
 
 # --- Evaluator behavior: multi_turn ---------------------------------------
