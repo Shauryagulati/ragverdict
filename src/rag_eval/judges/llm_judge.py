@@ -14,10 +14,9 @@ rubric crosses the model's minimum-cacheable-prefix length, the prefix is served
 from the prompt cache (~0.1x cost on cached tokens).
 
 V0 caveat on caching: the rubrics are currently 400-600 tokens, below Sonnet
-4.6's 2048-token minimum. The `cache_control` is wired correctly and will start
-hitting once rubrics grow (V1: more examples + edge-case guidance) or when the
-user configures a model with a smaller minimum. See `shared/prompt-caching.md`
-in the claude-api skill for the threshold table.
+4.6's 2048-token minimum cacheable prefix length. The `cache_control` is wired
+correctly and will start hitting once rubrics grow (more examples + edge-case
+guidance) or when the user configures a model with a smaller minimum.
 """
 
 from __future__ import annotations

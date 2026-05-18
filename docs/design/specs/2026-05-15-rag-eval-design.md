@@ -70,7 +70,7 @@ rags-eval/                              # repo root
 ├── LICENSE                             # MIT
 ├── .gitignore
 ├── docs/
-│   └── superpowers/specs/              # this doc + future specs
+│   └── design/specs/                   # this doc + future specs
 ├── examples/
 │   ├── README.md
 │   └── demo_rag/                       # reference agent for the demo video
