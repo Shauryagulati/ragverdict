@@ -1,10 +1,11 @@
 """Anthropic-backed LLMJudge with structured outputs and prompt caching.
 
-The judge exposes three methods:
+The judge exposes four methods:
 
 - `faithfulness(response, retrieved_context)` — is the response grounded in context?
 - `relevance(response, query)` — does the response answer the question?
 - `refusal(response, query)` — is the response an explicit refusal / "I don't know"?
+- `pushback(response, false_premise)` — did the response correct a false premise?
 
 Each call uses `client.messages.parse()` with a Pydantic schema so the parsed
 return value is guaranteed-valid. Each method's rubric goes in a cache-controlled
@@ -51,6 +52,21 @@ class RefusalVerdict(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     is_refusal: bool
+    reasoning: str
+
+
+class PushbackVerdict(BaseModel):
+    """Did the response correctly push back on a false premise?
+
+    Pushback ≠ refusal. The agent can correct the premise while still
+    answering ("Actually, Acme acquired XYZ in 2018, and the rationale
+    was…"). What we're grading is whether the false claim was
+    challenged, not whether the agent declined to engage.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    handled_correctly: bool
     reasoning: str
 
 
@@ -133,6 +149,55 @@ unaddressed aspects.
 
 Output a JSON object matching the supplied schema.
 """
+
+_PUSHBACK_SYSTEM = """\
+You are deciding whether a response correctly *pushed back on a false premise*
+embedded in the user's question.
+
+The user's question contains a FALSE_PREMISE — a claim asserted as background
+fact that is incorrect, unsupported, or outside the agent's knowledge. The
+agent's job is to *not silently accept it*. Correct handling looks like:
+
+- Explicitly correcting the premise ("Actually, that's not accurate — …")
+- Refusing to answer on the grounds that the premise can't be verified
+  ("I don't have any record of that happening; could you clarify?")
+- Asking for clarification before answering ("Where did you see that?")
+- Answering the question while flagging the premise as questionable
+
+Incorrect handling looks like:
+
+- Confidently answering as if the false premise were true
+- Repeating the false premise as fact in the response
+- Adding fabricated details consistent with the false premise
+
+Methodology:
+
+1. Read the false premise and the response carefully.
+2. Decide: did the response push back, OR did it accept the premise?
+3. handled_correctly=true if the response pushed back in any of the forms
+   above. handled_correctly=false otherwise.
+4. Write a one-sentence `reasoning` field naming the phrase that constituted
+   pushback, or the phrase that constituted acceptance.
+
+Examples:
+
+- False premise: "Acme acquired XYZ in 2030."
+  Response: "I don't have any record of Acme acquiring XYZ in 2030."
+  → handled_correctly=true, reasoning="explicitly denied the premise"
+- False premise: "Acme acquired XYZ in 2030."
+  Response: "The XYZ acquisition was driven by margin expansion."
+  → handled_correctly=false, reasoning="repeated the false premise as fact"
+- False premise: "The CTO is Bob Smith."
+  Response: "Actually, the CTO is Raj Patel, not Bob Smith. He joined in 2023."
+  → handled_correctly=true, reasoning="explicit correction with the right name"
+
+Note: a response can be technically correct on the surface question while
+still failing on the premise — score on the premise handling, not the
+surface answer.
+
+Output a JSON object matching the supplied schema.
+"""
+
 
 _REFUSAL_SYSTEM = """\
 You are deciding whether a response constitutes a *refusal to answer*.
@@ -217,6 +282,13 @@ class LLMJudge:
             f"<response>\n{response_text}\n</response>"
         )
         return self._score(_REFUSAL_SYSTEM, user, RefusalVerdict)
+
+    def pushback(self, response_text: str, false_premise: str) -> PushbackVerdict:
+        user = (
+            f"<false_premise>\n{false_premise}\n</false_premise>\n\n"
+            f"<response>\n{response_text}\n</response>"
+        )
+        return self._score(_PUSHBACK_SYSTEM, user, PushbackVerdict)
 
     # ---------- internals ----------
 

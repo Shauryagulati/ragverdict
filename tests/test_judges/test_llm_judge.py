@@ -12,6 +12,7 @@ from rag_eval.judges.llm_judge import (
     JudgeError,
     JudgeScore,
     LLMJudge,
+    PushbackVerdict,
     RefusalVerdict,
 )
 
@@ -53,6 +54,42 @@ def test_refusal_returns_refusal_verdict() -> None:
     result = judge.refusal("I could not find that info.", "What did Acme acquire in 2030?")
     assert isinstance(result, RefusalVerdict)
     assert result.is_refusal is True
+
+
+def test_pushback_returns_pushback_verdict() -> None:
+    parsed = PushbackVerdict(handled_correctly=True, reasoning="explicit correction")
+    judge = LLMJudge(client=_mock_client(parsed))
+    result = judge.pushback(
+        "Actually, Acme did not acquire XYZ in 2030.",
+        "Acme acquired XYZ in 2030",
+    )
+    assert isinstance(result, PushbackVerdict)
+    assert result.handled_correctly is True
+
+
+def test_pushback_marks_compliance_as_failure() -> None:
+    parsed = PushbackVerdict(
+        handled_correctly=False, reasoning="repeated the false premise as fact"
+    )
+    judge = LLMJudge(client=_mock_client(parsed))
+    result = judge.pushback(
+        "The XYZ acquisition was driven by margin expansion.",
+        "Acme acquired XYZ in 2030",
+    )
+    assert result.handled_correctly is False
+    assert "false premise" in result.reasoning
+
+
+def test_pushback_sends_false_premise_in_user_block() -> None:
+    """Wire check — confirms the false_premise is actually passed to the judge."""
+    client = _mock_client(PushbackVerdict(handled_correctly=True, reasoning="x"))
+    judge = LLMJudge(client=client)
+    judge.pushback("response text here", "Acme was founded on Mars")
+
+    call_kwargs = client.messages.parse.call_args.kwargs
+    user_content = call_kwargs["messages"][0]["content"]
+    assert "Acme was founded on Mars" in user_content
+    assert "response text here" in user_content
 
 
 def test_cache_stats_tracked_across_calls() -> None:
