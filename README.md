@@ -179,7 +179,7 @@ V0 (this release) is intentionally small. V1 candidates:
 ## Methodology
 
 The methodology behind rag-eval comes from running a 34-turn behavioral audit against a
-17-tool RAG copilot serving private-equity firms for commercial due diligence at Lunon.
+17-tool RAG copilot serving private-equity firms for commercial due diligence.
 The audit caught what metric scoring did not: tools that silently no-op'd, citations that
 looked clean but pointed at truncated document IDs, refusals that fired when they
 shouldn't, and answers that confabulated when they couldn't ground.
