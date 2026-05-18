@@ -361,22 +361,134 @@ def test_error_on_invalid_spec() -> None:
     assert "invalid edge_cases spec" in result.detail
 
 
-def test_unimplemented_kinds_surface_as_error_for_now() -> None:
-    """multi_turn and contradiction land in later steps. Until then they're ERROR,
-    not silent-pass. This test is replaced by real behavior tests in steps 3 and 5."""
+def test_contradiction_kind_surfaces_as_error_for_now() -> None:
+    """contradiction lands in step 5. Until then it's ERROR, not silent-pass.
+    This test is replaced by real behavior tests in step 5."""
     result = _run(
         FakeAdapter(handler=lambda p: RagResponse(text="x")),
+        cases=[{"kind": "contradiction", "query": "q", "false_premise": "p"}],
+    )
+    assert result.verdict == Verdict.ERROR
+    assert "not yet implemented" in result.detail
+
+
+# --- Evaluator behavior: multi_turn ---------------------------------------
+
+
+@dataclass
+class _ConversationAwareAdapter(RagAdapter):
+    """Records the conversation it received and returns based on what it saw."""
+
+    response_builder: Callable[[list[Message], str], str] = (
+        lambda conv, prompt: ""
+    )
+    captured: list[Message] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.captured = []
+
+    def query(
+        self,
+        prompt: str,
+        *,
+        conversation: list[Message] | None = None,
+    ) -> RagResponse:
+        self.captured = list(conversation or [])
+        return RagResponse(text=self.response_builder(self.captured, prompt))
+
+
+def test_multi_turn_pass_when_adapter_recalls_earlier_turn() -> None:
+    """RecallAdapter behavior: echo content from the first prior turn."""
+
+    def recall(conv: list[Message], prompt: str) -> str:
+        first_user = next((m.content for m in conv if m.role == "user"), "")
+        return f"You earlier asked about Jane Smith and {first_user}"
+
+    adapter = _ConversationAwareAdapter(response_builder=recall)
+    result = _run(
+        adapter,
+        cases=[
+            {
+                "kind": "multi_turn",
+                "turns": ["Who is the CEO of Acme?"],
+                "final_query": "What was the name you mentioned?",
+                "must_reference": ["Jane Smith"],
+            }
+        ],
+    )
+    assert result.verdict == Verdict.PASS
+    assert "recalled all 1" in result.artifacts["cases"][0]["detail"]
+
+
+def test_multi_turn_fail_when_adapter_forgets() -> None:
+    """AmnesiaAdapter behavior: ignore conversation entirely."""
+
+    adapter = _ConversationAwareAdapter(
+        response_builder=lambda conv, prompt: "I have no context from prior turns."
+    )
+    result = _run(
+        adapter,
+        cases=[
+            {
+                "kind": "multi_turn",
+                "turns": ["Who is the CEO of Acme?"],
+                "final_query": "What was their name?",
+                "must_reference": ["Jane Smith"],
+            }
+        ],
+    )
+    assert result.verdict == Verdict.FAIL
+    assert "missing required reference" in result.detail
+
+
+def test_multi_turn_builds_conversation_with_alternating_roles() -> None:
+    """Verify the conversation shape: N user turns + N placeholder assistant turns."""
+
+    adapter = _ConversationAwareAdapter(
+        response_builder=lambda conv, prompt: "ok found Jane Smith"
+    )
+    _run(
+        adapter,
+        cases=[
+            {
+                "kind": "multi_turn",
+                "turns": ["Q1", "Q2", "Q3"],
+                "final_query": "F",
+                "must_reference": ["Jane Smith"],
+            }
+        ],
+    )
+    # 3 user turns + 3 placeholder assistant turns = 6 messages
+    assert len(adapter.captured) == 6
+    assert [m.role for m in adapter.captured] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+    assert [m.content for m in adapter.captured if m.role == "user"] == ["Q1", "Q2", "Q3"]
+
+
+def test_multi_turn_error_when_adapter_raises() -> None:
+    def raising(conv: list[Message], prompt: str) -> str:
+        raise ConnectionError("boom")
+
+    adapter = _ConversationAwareAdapter(response_builder=raising)
+    result = _run(
+        adapter,
         cases=[
             {
                 "kind": "multi_turn",
                 "turns": ["a"],
                 "final_query": "b",
                 "must_reference": ["c"],
-            },
+            }
         ],
     )
     assert result.verdict == Verdict.ERROR
-    assert "not yet implemented" in result.detail
+    assert "adapter raised on multi_turn" in result.detail
 
 
 def test_registered_under_edge_cases_name() -> None:

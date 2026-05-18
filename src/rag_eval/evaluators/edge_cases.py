@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from rag_eval.adapters.base import Message
 from rag_eval.evaluators import register
 from rag_eval.evaluators.base import Evaluator, TestResult, Verdict
 
@@ -152,11 +153,13 @@ class EdgeCasesEvaluator(Evaluator):
         for case in ec_spec.cases:
             if isinstance(case, LongInputCase):
                 outcomes.append(_run_long_input(case, adapter))
+            elif isinstance(case, MultiTurnCase):
+                outcomes.append(_run_multi_turn(case, adapter))
             elif isinstance(case, EmptyInputCase):
                 outcomes.append(_run_empty_input(case, adapter))
             else:
-                # multi_turn and contradiction land in later steps. Until then,
-                # surface as ERROR so the suite is honest about coverage.
+                # contradiction lands in step 5. Until then, surface as ERROR
+                # so the suite is honest about coverage.
                 outcomes.append(
                     CaseOutcome(
                         case=case,
@@ -254,6 +257,49 @@ def _run_long_input(case: LongInputCase, adapter: RagAdapter) -> CaseOutcome:
         case=case,
         verdict=Verdict.PASS,
         detail=f"handled {case.length}-char prompt in <{case.timeout_s}s",
+        response_text=response.text,
+    )
+
+
+def _run_multi_turn(case: MultiTurnCase, adapter: RagAdapter) -> CaseOutcome:
+    """Build an N-turn conversation, send `final_query`, verify recall via must_reference.
+
+    The assistant turns are placeholders rather than real model responses — we're
+    testing whether the agent *uses* conversation history, not whether it can
+    simulate one. Live multi-turn (where each assistant turn comes from the
+    adapter) is a v0.3 follow-up.
+    """
+    conversation: list[Message] = []
+    for user_turn in case.turns:
+        conversation.append(Message(role="user", content=user_turn))
+        conversation.append(
+            Message(role="assistant", content="(prior turn — context only)")
+        )
+
+    try:
+        response = adapter.query(case.final_query, conversation=conversation)
+    except Exception as exc:  # adapter contract is "anything goes"
+        return CaseOutcome(
+            case=case,
+            verdict=Verdict.ERROR,
+            detail=f"adapter raised on multi_turn call: {exc}",
+            response_text="",
+        )
+
+    lower = response.text.lower()
+    missing = [s for s in case.must_reference if s.lower() not in lower]
+    if missing:
+        return CaseOutcome(
+            case=case,
+            verdict=Verdict.FAIL,
+            detail=f"missing required reference(s) from earlier turns: {missing}",
+            response_text=response.text,
+        )
+
+    return CaseOutcome(
+        case=case,
+        verdict=Verdict.PASS,
+        detail=f"recalled all {len(case.must_reference)} required reference(s)",
         response_text=response.text,
     )
 
