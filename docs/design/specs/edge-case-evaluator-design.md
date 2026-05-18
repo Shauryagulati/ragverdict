@@ -1,6 +1,6 @@
 # Edge-Case Battery Evaluator — Design Spec
 
-Builds on the [base rag-eval design spec](./2026-05-15-rag-eval-design.md).
+Builds on the [base rag-eval design spec](./rag-eval-design.md).
 
 ## 1. Problem & Motivation
 

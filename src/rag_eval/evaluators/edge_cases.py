@@ -13,7 +13,7 @@ discriminated union on `kind`:
 Verdicts are PASS/FAIL/ERROR only — no WEAK. Edge cases are binary safety
 properties, not quality scores in a tunable range.
 
-Spec: docs/design/specs/2026-05-18-edge-case-evaluator-design.md
+Spec: docs/design/specs/edge-case-evaluator-design.md
 """
 
 from __future__ import annotations
