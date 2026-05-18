@@ -1,11 +1,5 @@
 # rag-eval Design Spec
 
-**Date:** 2026-05-15
-**Status:** Draft for approval
-**Target ship:** End of week (2026-05-22)
-
----
-
 ## 1. Problem & Positioning
 
 ### The gap

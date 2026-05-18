@@ -1,11 +1,6 @@
 # Edge-Case Battery Evaluator — Design Spec
 
-**Date:** 2026-05-18
-**Status:** Draft for approval
-**Target ship:** v0.2.0
-**Builds on:** [`2026-05-15-rag-eval-design.md`](./2026-05-15-rag-eval-design.md) (V0 spec)
-
----
+Builds on the [base rag-eval design spec](./2026-05-15-rag-eval-design.md).
 
 ## 1. Problem & Motivation
 
