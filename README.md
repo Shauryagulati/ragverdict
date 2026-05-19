@@ -175,6 +175,84 @@ After each run, two files land in `./report/` (override with `--out-dir`):
   per-citation audit detail. Stable shape — see [`docs/json-report-schema.md`](./docs/json-report-schema.md).
 - **`report.md`** — Human-readable summary table.
 
+## FAQ
+
+### When should I use rag-eval vs RAGAs / DeepEval / TruLens?
+
+They're complementary, not competing. The metric-centric tools (RAGAs, ARES, TruLens,
+Phoenix, DeepEval) score response quality dimensions like faithfulness and relevance —
+useful for tracking quality over time. rag-eval tests *agent behavior* — did the tools
+fire, do the citations resolve to real documents, did the agent push back on a false
+premise, does it survive a 10K-character prompt. A mature RAG team uses both:
+RAGAs-style scoring for quality tracking + rag-eval for behavioral regression in CI.
+
+### Does it work without an API key?
+
+Yes. Pass `--no-judge` (or set no `ANTHROPIC_API_KEY` and the runner degrades
+automatically). Hard assertions still run — `tool_coverage`, citation-vs-corpus
+dangling checks, `must_mention` / `must_refuse` / `must_not_cite`,
+long-input/multi-turn/empty-input edge cases. The `contradiction` edge case falls back
+to a narrow regex heuristic (`_PUSHBACK_HINTS`) with a clear caveat in the FAIL detail
+when it can't confidently grade.
+
+### Can I write my own evaluator?
+
+Yes. Subclass `Evaluator`, set a class-level `name`, decorate with `@register`, and
+implement `run(adapter, spec, *, judge, thresholds) -> TestResult`. Then `import` your
+module before `rag-eval run` or add it to the package's autoload. The bundled
+evaluators (`src/rag_eval/evaluators/`) are reference implementations.
+
+### Can I use it with a RAG system written in another language?
+
+Yes — use the `HttpAdapter`. Set `adapter.type: http` + an `endpoint` URL in your
+config. The runner POSTs `{prompt, conversation}` and expects a JSON response matching
+the `RagResponse` shape. Your Rust / Go / Node / TypeScript / etc. service just needs
+to speak that protocol.
+
+### What's the difference between `WEAK` and `FAIL`?
+
+`FAIL` = a hard assertion failed (a required substring was missing, a citation didn't
+resolve, an edge case crashed). `WEAK` = all hard assertions held but a judge score
+fell into the configurable weak band (default: faithfulness or relevance in `[0.7,
+0.85)`). `WEAK` is "watch this," `FAIL` is "fix this." Both `PASS` and `WEAK` give
+exit code 0; `FAIL` gives exit code 1.
+
+### Why four-state verdicts instead of floating-point scores?
+
+So they map cleanly to CI exit codes and a 5-second scan of the terminal table. Raw
+judge scores still live in `report.json` for users who want them — but the headline
+output is a verdict, not a number you have to threshold yourself. The pitch is "pytest
+for RAG, not metrics for RAG."
+
+### Can I use a model other than Claude for the judge?
+
+The judge is configurable via `judge.model` in `config.yaml` (defaults to
+`claude-sonnet-4-6`). Any current Anthropic model works out of the box. Other
+providers require swapping `LLMJudge` for a sibling implementation — the runner
+accepts any object that satisfies the judge interface.
+
+### How do I integrate this into GitHub Actions?
+
+```yaml
+- name: RAG behavioral audit
+  run: |
+    pip install rag-eval
+    rag-eval run config.yaml --no-judge
+```
+
+CI exit code propagates naturally — `PASS`/`WEAK` is exit 0, any `FAIL` is exit 1,
+config errors are exit 2, all-`ERROR` (typically: judge unreachable) is exit 3. For
+live-judge CI runs, set `ANTHROPIC_API_KEY` as a repo secret and drop the
+`--no-judge` flag.
+
+### Does prompt caching actually fire?
+
+The wiring is correct on every judge rubric (`cache_control={"type": "ephemeral"}`),
+but Sonnet 4.6's minimum cacheable prefix is 2048 tokens and current rubrics are
+400-600 tokens. Caching activates as rubrics grow (more examples) or on models with
+smaller minimums. Documented honestly in `LLMJudge`'s module docstring rather than
+silently shipping a feature that doesn't fire yet.
+
 ## Roadmap
 
 v0.2 ships the edge-case battery. Next up:

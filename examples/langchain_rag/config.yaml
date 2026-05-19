@@ -1,0 +1,39 @@
+# Example rag-eval config for the LangChain-backed adapter starter.
+#
+# Runs offline against the mock LangChain adapter (see adapter.py).
+# Swap the adapter for your real LangChain RetrievalQA chain and the tests still apply.
+
+adapter:
+  type: python
+  module: examples.langchain_rag.adapter
+  class: LangChainRagAdapter
+
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+
+tests:
+  - name: tool_coverage_all
+    evaluator: tool_coverage
+
+  - name: integration_lookup
+    evaluator: rag_quality
+    cases:
+      - query: "Which CRMs does Acme integrate with via Salesforce and similar APIs?"
+        must_mention: ["Salesforce"]
+        expects_citations: true
+      - query: "What's the Acme platform overview for fleet enterprise customers?"
+        must_mention: ["fleet"]
+        expects_citations: true
+
+  - name: hallucination_guardrail
+    evaluator: rag_quality
+    cases:
+      - query: "What is Acme's quantum computing strategy for 2027?"
+        must_refuse: true
+        must_not_cite: true
+
+  - name: citation_audit
+    evaluator: citation_audit
+    sample_queries:
+      - "Which CRMs does Acme integrate with via Salesforce and similar APIs?"

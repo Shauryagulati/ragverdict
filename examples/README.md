@@ -1,5 +1,14 @@
 # Examples
 
+This directory has three flavors of example:
+
+| Directory | What it is | When to look at it |
+|---|---|---|
+| [`demo_rag/`](./demo_rag/) | Bundled reference adapter over a markdown corpus | First-time tour. `rag-eval run examples/demo_rag/config.yaml` works on a fresh clone. |
+| [`openai_rag/`](./openai_rag/) | Copy-paste starter for an OpenAI-backed RAG | You're wiring rag-eval into a project that uses the OpenAI SDK |
+| [`langchain_rag/`](./langchain_rag/) | Copy-paste starter for a LangChain-backed RAG | You're wiring rag-eval into a LangChain `RetrievalQA` / LCEL chain |
+| [`comparison/`](./comparison/) | Side-by-side artifact: rag-eval vs metric-centric tools | You want to understand *why* this exists (or you want a one-page explainer to share) |
+
 ## `demo_rag/`
 
 A reference RAG agent that runs against a tiny in-tree markdown corpus about a fictional
