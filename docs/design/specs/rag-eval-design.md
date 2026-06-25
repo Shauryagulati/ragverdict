@@ -28,7 +28,7 @@ The **uncovered gap**: behavioral audits of RAG-*agents* (agents that retrieve +
 
 ---
 
-## 2. V0 Scope (end of week)
+## 2. V0 Scope
 
 ### In scope
 
@@ -49,7 +49,7 @@ The **uncovered gap**: behavioral audits of RAG-*agents* (agents that retrieve +
 - Edge-case battery (long input, multi-turn coherence, contradiction, auth-negative) — all V1
 - Cloud dashboard / regression tracking (monetization track)
 
-**Rationale:** The 5-day timeline cannot accommodate the full plan and stay polished. V0 must be small enough to demo cleanly and rough-enough-edged that the gap is obvious to early users.
+**Rationale:** The initial scope cannot accommodate the full plan and stay polished. V0 must be small enough to demo cleanly and rough-enough-edged that the gap is obvious to early users.
 
 ---
 
@@ -67,7 +67,7 @@ rags-eval/                              # repo root
 │   └── design/specs/                   # this doc + future specs
 ├── examples/
 │   ├── README.md
-│   └── demo_rag/                       # reference agent for the demo video
+│   └── demo_rag/                       # reference agent for the bundled demo
 │       ├── adapter.py                  # subclass of RagAdapter
 │       ├── corpus/                     # 5-10 markdown source docs
 │       └── config.yaml                 # rag-eval config exercising the demo
@@ -245,15 +245,15 @@ tests:
 
 ---
 
-## 5. Build sequence (5 days)
+## 5. Build sequence
 
-| Day | Deliverable | Verification |
-|-----|-------------|--------------|
+| Phase | Deliverable | Verification |
+|-------|-------------|--------------|
 | 1 | Repo scaffold, `pyproject.toml`, `RagAdapter`/`RagResponse`, Pydantic `Config`, `cli.py` skeleton, `runner.py` happy path, example demo_rag adapter stub. | `rag-eval run examples/demo_rag/config.yaml` exits 0 with empty test list. |
 | 2 | `tool_coverage` evaluator, `rag_quality` evaluator (hard assertions only, no judge yet), Rich live table. | Demo config exercises tool coverage and hard-assertion rag_quality; terminal table renders. |
 | 3 | `LLMJudge` (faithfulness + relevance, prompt caching), wire into `rag_quality` for WEAK verdicts, `citation_audit` evaluator. | Full demo run produces PASS/WEAK/FAIL mix and a Markdown report. |
-| 4 | JSON report, exit codes, README with quickstart + asciinema, `examples/` polish, mypy clean, integration test green. | Fresh-clone install works; README quickstart succeeds. |
-| 5 | Demo video script, record asciinema/screen capture, publish v0.1.0 to GitHub, post LinkedIn/Twitter. | Repo public, README has working demo link. |
+| 4 | JSON report, exit codes, README with quickstart, `examples/` polish, mypy clean, integration test green. | Fresh-clone install works; README quickstart succeeds. |
+| 5 | Package the distribution and publish v0.1.0. | Release tagged; fresh-clone install + quickstart succeed. |
 
 ---
 

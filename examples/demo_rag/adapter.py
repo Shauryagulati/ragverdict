@@ -7,6 +7,7 @@ citation_audit) have something concrete to bite into.
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -37,6 +38,9 @@ class DemoAdapter(RagAdapter):
                 content=md.read_text(),
                 title=md.stem.replace("-", " ").title(),
             )
+        # Lowercased corpus text — the groundedness guard checks entity names
+        # against this to decide whether the agent actually has any record of them.
+        self._corpus_text = " ".join(d.content for d in self._docs.values()).lower()
 
     def available_tools(self) -> list[ToolSpec]:
         return [
@@ -99,6 +103,23 @@ class DemoAdapter(RagAdapter):
                 raw={"latency_ms": int((time.perf_counter() - t0) * 1000)},
             )
 
+        # Groundedness guard: if the question names an entity we have no record of,
+        # push back instead of dressing up a loosely-matched chunk as an answer —
+        # e.g. don't validate "Acme's acquisition of XYZ Corp" just because the
+        # company-overview doc happens to mention "Acme Corp".
+        unknown = self._unknown_entities(prompt)
+        if unknown:
+            return RagResponse(
+                text=(
+                    f"I have no record of {unknown[0]} in the Acme corpus, so I "
+                    f"cannot speak to that premise."
+                ),
+                citations=[],
+                tool_calls=tool_calls,
+                retrieved_context=[],
+                raw={"latency_ms": int((time.perf_counter() - t0) * 1000)},
+            )
+
         # Build a synthesis-style answer by quoting the top match.
         top = retrieved[0]
         text = (
@@ -127,6 +148,21 @@ class DemoAdapter(RagAdapter):
             "this", "that", "any", "all", "from", "have", "had", "does", "do", "as",
         }
     )
+
+    # Capitalized multi-word phrases ("XYZ Corp", "Chief Marketing Officer") — a
+    # lightweight, dependency-free stand-in for named-entity recognition. A real
+    # agent would use NER or let the judge assess groundedness.
+    _ENTITY_RE = re.compile(r"\b[A-Z][\w]*(?:\s+[A-Z][\w]*)+\b")
+
+    def _unknown_entities(self, prompt: str) -> list[str]:
+        """Multi-word proper nouns in `prompt` that appear nowhere in the corpus.
+
+        The agent declines on these rather than answer a question built on an
+        entity it has no record of — the check that makes it push back on a false
+        premise instead of confabulating around a loosely-matched chunk.
+        """
+        matches: list[str] = self._ENTITY_RE.findall(prompt)
+        return [m for m in matches if m.lower() not in self._corpus_text]
 
     def _retrieve(self, prompt: str) -> list[ContextDoc]:
         tokens = self._tokens(prompt.lower())

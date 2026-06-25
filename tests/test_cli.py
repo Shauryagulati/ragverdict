@@ -50,8 +50,9 @@ def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
             "--no-judge",
         ],
     )
-    # Exit code may be 0 or 1 depending on demo quality — we just want clean wiring.
-    assert result.exit_code in (0, 1), result.output
+    # Demo is all-green by design: the bundled DemoAdapter is a well-behaved
+    # reference agent (it pushes back on false premises), so the run exits 0.
+    assert result.exit_code == 0, result.output
 
     payload = json.loads((tmp_path / "report" / "report.json").read_text())
     test_names = {t["name"] for t in payload["tests"]}
@@ -66,13 +67,13 @@ def test_cli_full_demo_runs_evaluators(repo_root: Path, tmp_path: Path) -> None:
     assert by_name["tool_coverage_all"]["verdict"] == "PASS"
     # citation_audit in --no-judge mode runs the dangling check only — should PASS.
     assert by_name["citation_audit_basics"]["verdict"] == "PASS"
-    # edge_cases assert per-case: three hard-assertion kinds (long_input, multi_turn,
-    # empty_input) should PASS; contradiction is expected to FAIL because the demo's
-    # substring-RAG doesn't push back on false premises — that's *exactly* the failure
-    # mode the contradiction kind is designed to catch. Demonstrates the evaluator
-    # doing its job on the bundled reference adapter.
+    # All four edge-case kinds PASS on the bundled reference adapter. contradiction
+    # passes because DemoAdapter's groundedness guard makes it push back on the false
+    # premise ("Acme's acquisition of XYZ Corp") instead of confabulating — even under
+    # the --no-judge heuristic. The tool's ability to *catch* an agent that does NOT
+    # push back is proven in test_regression_smoke.py against CompliantAdapter.
     ec_cases = {c["kind"]: c for c in by_name["edge_cases_battery"]["artifacts"]["cases"]}
     assert ec_cases["long_input"]["verdict"] == "PASS"
     assert ec_cases["multi_turn"]["verdict"] == "PASS"
     assert ec_cases["empty_input"]["verdict"] == "PASS"
-    assert ec_cases["contradiction"]["verdict"] == "FAIL"
+    assert ec_cases["contradiction"]["verdict"] == "PASS"

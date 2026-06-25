@@ -16,6 +16,7 @@ not floating-point metric averages.
 │ direct_retrieval   │ rag_quality    │ PASS    │ 12662ms │ 3/3 cases passed                │
 │ hallucination_g…   │ rag_quality    │ PASS    │  3985ms │ 2/2 cases passed                │
 │ citation_audit     │ citation_audit │ PASS    │  5535ms │ mean support_score=1.00         │
+│ edge_cases_battery │ edge_cases     │ PASS    │  2380ms │ 4/4 cases passed                │
 └────────────────────┴────────────────┴─────────┴─────────┴─────────────────────────────────┘
 ```
 
@@ -236,7 +237,7 @@ accepts any object that satisfies the judge interface.
 ```yaml
 - name: RAG behavioral audit
   run: |
-    pip install rag-eval
+    pip install git+https://github.com/Shauryagulati/rag-eval.git  # PyPI release pending
     rag-eval run config.yaml --no-judge
 ```
 
@@ -255,7 +256,7 @@ silently shipping a feature that doesn't fire yet.
 
 ## Roadmap
 
-v0.2 ships the edge-case battery. Next up:
+v0.2 shipped the edge-case battery. Next up:
 
 - Write-tool safety evaluator (preview-only verification, version chain checks)
 - `auth_negative` kind for the `edge_cases` evaluator (requires adapter ABC extension)
