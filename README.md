@@ -58,7 +58,13 @@ the system *behaves correctly*, with PASS/FAIL/WEAK verdicts that map cleanly to
 ### 1. Install
 
 ```bash
-pip install -e ".[dev]"  # from a clone; PyPI release pending
+# Use it on your own RAG system:
+pip install ragverdict
+
+# Or clone to run the bundled demo below / hack on it:
+git clone https://github.com/Shauryagulati/ragverdict && cd ragverdict
+pip install -e ".[dev]"
+
 export ANTHROPIC_API_KEY=sk-ant-…  # required for the LLM judge
 ```
 
@@ -237,7 +243,7 @@ accepts any object that satisfies the judge interface.
 ```yaml
 - name: RAG behavioral audit
   run: |
-    pip install git+https://github.com/Shauryagulati/ragverdict.git  # PyPI release pending
+    pip install ragverdict
     ragverdict run config.yaml --no-judge
 ```
 
