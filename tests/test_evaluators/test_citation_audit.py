@@ -4,17 +4,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Citation,
     Message,
     RagAdapter,
     RagResponse,
     SourceDoc,
 )
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.base import Verdict
-from rag_eval.evaluators.citation_audit import CitationAuditEvaluator
-from rag_eval.judges.llm_judge import JudgeScore, RefusalVerdict
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.base import Verdict
+from ragverdict.evaluators.citation_audit import CitationAuditEvaluator
+from ragverdict.judges.llm_judge import JudgeScore, RefusalVerdict
 
 CORPUS = [
     SourceDoc(source_id="REV", content="Acme reported $5.2M in Q1 2025."),

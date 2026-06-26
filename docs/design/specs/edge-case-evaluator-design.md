@@ -1,6 +1,6 @@
 # Edge-Case Battery Evaluator — Design Spec
 
-Builds on the [base rag-eval design spec](./rag-eval-design.md).
+Builds on the [base ragverdict design spec](./ragverdict-design.md).
 
 ## 1. Problem & Motivation
 
@@ -20,7 +20,7 @@ input-boundary categories most likely to surface in production.
 
 ### Pitch
 
-`edge_cases` — a fourth evaluator in the rag-eval battery that exercises four input-
+`edge_cases` — a fourth evaluator in the ragverdict battery that exercises four input-
 boundary failure modes (`long_input`, `multi_turn`, `contradiction`, `empty_input`) with
 hard-assertion verdicts. One new judge method (`pushback`) to grade contradiction
 handling; everything else is assertion-based.
@@ -52,7 +52,7 @@ handling; everything else is assertion-based.
 ### File layout
 
 ```
-src/rag_eval/
+src/ragverdict/
 ├── evaluators/
 │   └── edge_cases.py            ← NEW: evaluator module
 └── judges/
@@ -149,7 +149,7 @@ class EdgeCasesSpec(BaseModel):
 - **Prompt construction:** Build a `list[Message]` of length `2 * len(turns)` alternating
   user/assistant: `[user(turns[0]), assistant("(prior turn — context only)"), user(turns[1]),
   assistant("(prior turn — context only)"), …]`. (`Message` is the existing dataclass in
-  `src/rag_eval/adapters/base.py` with `role: str` and `content: str` fields.) Then call
+  `src/ragverdict/adapters/base.py` with `role: str` and `content: str` fields.) Then call
   `adapter.query(final_query, conversation=<built list>)`.
 - **PASS:** Response text contains every substring in `must_reference` (case-insensitive).
 - **FAIL:** Any required substring missing.
@@ -185,7 +185,7 @@ class EdgeCasesSpec(BaseModel):
 ### Judge extension: `pushback()`
 
 ```python
-# In src/rag_eval/judges/llm_judge.py
+# In src/ragverdict/judges/llm_judge.py
 
 class PushbackVerdict(BaseModel):
     handled_correctly: bool
@@ -261,7 +261,7 @@ Stub the `anthropic.Anthropic` client (existing pattern). Add tests:
 
 ### Regression smoke (`tests/test_regression_smoke.py`)
 
-Add two adapters and the assertions that prove rag-eval flags them:
+Add two adapters and the assertions that prove ragverdict flags them:
 - `TruncatingAdapter` — silently drops anything past 1000 chars and answers the partial
   prompt. Run with `edge_cases.long_input` → must produce FAIL.
 - `CompliantAdapter` — agrees with any false premise without pushback. Run with
@@ -310,7 +310,7 @@ Overall repo coverage should hold ≥88% (current) or improve.
     - kind: empty_input
 ```
 
-Expected result on `rag-eval run examples/demo_rag/config.yaml`: 5 tests instead of 4, all
+Expected result on `ragverdict run examples/demo_rag/config.yaml`: 5 tests instead of 4, all
 PASS.
 
 ---

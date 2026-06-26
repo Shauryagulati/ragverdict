@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Citation,
     ContextDoc,
     Message,

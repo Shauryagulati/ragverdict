@@ -1,6 +1,6 @@
 # `report.json` schema
 
-`rag-eval` writes `report.json` to `--out-dir` (default `./report/`) at the end of every
+`ragverdict` writes `report.json` to `--out-dir` (default `./report/`) at the end of every
 run. The shape is stable: V1's regression-tracking story rests on diffing successive
 reports, so additions are backwards-compatible and removals require a major bump.
 

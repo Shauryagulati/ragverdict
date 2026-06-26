@@ -8,9 +8,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    from rag_eval.adapters.base import RagAdapter
-    from rag_eval.config import TestSpec, Thresholds
-    from rag_eval.judges.llm_judge import LLMJudge
+    from ragverdict.adapters.base import RagAdapter
+    from ragverdict.config import TestSpec, Thresholds
+    from ragverdict.judges.llm_judge import LLMJudge
 
 
 class Verdict(str, Enum):

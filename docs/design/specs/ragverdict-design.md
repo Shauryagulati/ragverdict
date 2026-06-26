@@ -1,4 +1,4 @@
-# rag-eval Design Spec
+# ragverdict Design Spec
 
 ## 1. Problem & Positioning
 
@@ -17,7 +17,7 @@ The **uncovered gap**: behavioral audits of RAG-*agents* (agents that retrieve +
 
 ### Pitch
 
-**`rag-eval`: pytest for RAG agents.** Point it at any RAG endpoint or Python adapter, give it a YAML config, get a PASS / FAIL / WEAK report covering tool coverage, retrieval quality, citation verification, hallucination, and edge cases.
+**`ragverdict`: pytest for RAG agents.** Point it at any RAG endpoint or Python adapter, give it a YAML config, get a PASS / FAIL / WEAK report covering tool coverage, retrieval quality, citation verification, hallucination, and edge cases.
 
 ### Differentiation (one line each)
 
@@ -34,7 +34,7 @@ The **uncovered gap**: behavioral audits of RAG-*agents* (agents that retrieve +
 
 | Component | V0 deliverable |
 |-----------|----------------|
-| CLI | `rag-eval run <config.yaml>` |
+| CLI | `ragverdict run <config.yaml>` |
 | Adapters | (a) Python adapter (user subclasses `RagAdapter`), (b) HTTP endpoint adapter |
 | Evaluators | `tool_coverage`, `rag_quality` (direct + hallucination guardrail), `citation_audit` |
 | Judges | Anthropic-based `faithfulness` + `relevance` (single module, two prompts, prompt caching enabled) |
@@ -70,8 +70,8 @@ rags-eval/                              # repo root
 │   └── demo_rag/                       # reference agent for the bundled demo
 │       ├── adapter.py                  # subclass of RagAdapter
 │       ├── corpus/                     # 5-10 markdown source docs
-│       └── config.yaml                 # rag-eval config exercising the demo
-├── src/rag_eval/
+│       └── config.yaml                 # ragverdict config exercising the demo
+├── src/ragverdict/
 │   ├── __init__.py                     # version, public exports
 │   ├── cli.py                          # Click entry point
 │   ├── config.py                       # Pydantic schemas: Config, TestCase, EvaluatorRef
@@ -91,7 +91,7 @@ rags-eval/                              # repo root
 │   └── judges/
 │       ├── __init__.py
 │       └── llm_judge.py                # Anthropic client, faithfulness + relevance prompts
-└── tests/                              # rag-eval's own pytest tests
+└── tests/                              # ragverdict's own pytest tests
     ├── test_config.py
     ├── test_runner.py
     ├── test_evaluators/
@@ -235,7 +235,7 @@ tests:
 
 ---
 
-## 4. Testing strategy (for rag-eval itself)
+## 4. Testing strategy (for ragverdict itself)
 
 - `tests/` uses pytest. Fast, no live LLM calls in CI.
 - Evaluator tests use **fake adapters** that return canned `RagResponse` objects — lets us assert verdict logic deterministically.
@@ -249,7 +249,7 @@ tests:
 
 | Phase | Deliverable | Verification |
 |-------|-------------|--------------|
-| 1 | Repo scaffold, `pyproject.toml`, `RagAdapter`/`RagResponse`, Pydantic `Config`, `cli.py` skeleton, `runner.py` happy path, example demo_rag adapter stub. | `rag-eval run examples/demo_rag/config.yaml` exits 0 with empty test list. |
+| 1 | Repo scaffold, `pyproject.toml`, `RagAdapter`/`RagResponse`, Pydantic `Config`, `cli.py` skeleton, `runner.py` happy path, example demo_rag adapter stub. | `ragverdict run examples/demo_rag/config.yaml` exits 0 with empty test list. |
 | 2 | `tool_coverage` evaluator, `rag_quality` evaluator (hard assertions only, no judge yet), Rich live table. | Demo config exercises tool coverage and hard-assertion rag_quality; terminal table renders. |
 | 3 | `LLMJudge` (faithfulness + relevance, prompt caching), wire into `rag_quality` for WEAK verdicts, `citation_audit` evaluator. | Full demo run produces PASS/WEAK/FAIL mix and a Markdown report. |
 | 4 | JSON report, exit codes, README with quickstart, `examples/` polish, mypy clean, integration test green. | Fresh-clone install works; README quickstart succeeds. |

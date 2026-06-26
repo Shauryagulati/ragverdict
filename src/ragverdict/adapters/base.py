@@ -73,7 +73,7 @@ class RagResponse:
 
 
 class RagAdapter(ABC):
-    """Subclass and implement `query` to connect rag-eval to your RAG system."""
+    """Subclass and implement `query` to connect ragverdict to your RAG system."""
 
     @abstractmethod
     def query(

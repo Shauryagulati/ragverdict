@@ -1,7 +1,7 @@
-# rag-eval
+# ragverdict
 
-[![CI](https://github.com/Shauryagulati/rag-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/Shauryagulati/rag-eval/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/Shauryagulati/rag-eval/blob/main/pyproject.toml)
+[![CI](https://github.com/Shauryagulati/ragverdict/actions/workflows/ci.yml/badge.svg)](https://github.com/Shauryagulati/ragverdict/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/Shauryagulati/ragverdict/blob/main/pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 **pytest for RAG agents.** Behavioral audits of any RAG system — tool coverage, retrieval
@@ -20,7 +20,7 @@ not floating-point metric averages.
 └────────────────────┴────────────────┴─────────┴─────────┴─────────────────────────────────┘
 ```
 
-## Why rag-eval
+## Why ragverdict
 
 Existing RAG evaluation tools score metrics. RAGAs, DeepEval, TruLens, and Arize Phoenix
 all answer "how faithful was the response *on average*" via LLM-as-judge — they tell you
@@ -34,7 +34,7 @@ end-to-end**.
 | **TruLens**  | RAG Triad + OpenTelemetry tracing                           | Observability-centric                                                         |
 | **Phoenix**  | Tracing platform that wraps the above                       | Heavy infra, not a CLI                                                        |
 
-**The gap rag-eval fills:** behavioral audits of RAG *agents* — assertions about whether
+**The gap ragverdict fills:** behavioral audits of RAG *agents* — assertions about whether
 the system *behaves correctly*, with PASS/FAIL/WEAK verdicts that map cleanly to CI.
 
 ### What it checks
@@ -65,7 +65,7 @@ export ANTHROPIC_API_KEY=sk-ant-…  # required for the LLM judge
 ### 2. Run the bundled demo
 
 ```bash
-rag-eval run examples/demo_rag/config.yaml
+ragverdict run examples/demo_rag/config.yaml
 ```
 
 This runs five tests against a tiny reference RAG agent (`DemoAdapter`) over a fictional
@@ -74,7 +74,7 @@ This runs five tests against a tiny reference RAG agent (`DemoAdapter`) over a f
 To run without burning API tokens:
 
 ```bash
-rag-eval run examples/demo_rag/config.yaml --no-judge
+ragverdict run examples/demo_rag/config.yaml --no-judge
 ```
 
 (Hard assertions still run; WEAK verdicts and citation support scoring are skipped.)
@@ -123,7 +123,7 @@ tests:
 Subclass `RagAdapter` and implement `query()`:
 
 ```python
-from rag_eval import RagAdapter, RagResponse, Citation, ToolCall, ToolSpec, SourceDoc
+from ragverdict import RagAdapter, RagResponse, Citation, ToolCall, ToolSpec, SourceDoc
 
 class MyRagAdapter(RagAdapter):
     def query(self, prompt, *, conversation=None) -> RagResponse:
@@ -178,14 +178,14 @@ After each run, two files land in `./report/` (override with `--out-dir`):
 
 ## FAQ
 
-### When should I use rag-eval vs RAGAs / DeepEval / TruLens?
+### When should I use ragverdict vs RAGAs / DeepEval / TruLens?
 
 They're complementary, not competing. The metric-centric tools (RAGAs, ARES, TruLens,
 Phoenix, DeepEval) score response quality dimensions like faithfulness and relevance —
-useful for tracking quality over time. rag-eval tests *agent behavior* — did the tools
+useful for tracking quality over time. ragverdict tests *agent behavior* — did the tools
 fire, do the citations resolve to real documents, did the agent push back on a false
 premise, does it survive a 10K-character prompt. A mature RAG team uses both:
-RAGAs-style scoring for quality tracking + rag-eval for behavioral regression in CI.
+RAGAs-style scoring for quality tracking + ragverdict for behavioral regression in CI.
 
 ### Does it work without an API key?
 
@@ -200,8 +200,8 @@ when it can't confidently grade.
 
 Yes. Subclass `Evaluator`, set a class-level `name`, decorate with `@register`, and
 implement `run(adapter, spec, *, judge, thresholds) -> TestResult`. Then `import` your
-module before `rag-eval run` or add it to the package's autoload. The bundled
-evaluators (`src/rag_eval/evaluators/`) are reference implementations.
+module before `ragverdict run` or add it to the package's autoload. The bundled
+evaluators (`src/ragverdict/evaluators/`) are reference implementations.
 
 ### Can I use it with a RAG system written in another language?
 
@@ -237,8 +237,8 @@ accepts any object that satisfies the judge interface.
 ```yaml
 - name: RAG behavioral audit
   run: |
-    pip install git+https://github.com/Shauryagulati/rag-eval.git  # PyPI release pending
-    rag-eval run config.yaml --no-judge
+    pip install git+https://github.com/Shauryagulati/ragverdict.git  # PyPI release pending
+    ragverdict run config.yaml --no-judge
 ```
 
 CI exit code propagates naturally — `PASS`/`WEAK` is exit 0, any `FAIL` is exit 1,

@@ -1,4 +1,4 @@
-"""Click CLI entry point: `rag-eval run <config.yaml>`."""
+"""Click CLI entry point: `ragverdict run <config.yaml>`."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ from pathlib import Path
 
 import click
 
-from rag_eval import __version__
-from rag_eval.adapters.loader import AdapterLoadError
-from rag_eval.config import ConfigError
-from rag_eval.runner import Runner, RunnerError
+from ragverdict import __version__
+from ragverdict.adapters.loader import AdapterLoadError
+from ragverdict.config import ConfigError
+from ragverdict.runner import Runner, RunnerError
 
 
-@click.group(name="rag-eval")
-@click.version_option(__version__, prog_name="rag-eval")
+@click.group(name="ragverdict")
+@click.version_option(__version__, prog_name="ragverdict")
 def cli() -> None:
-    """rag-eval — pytest for RAG agents."""
+    """ragverdict — pytest for RAG agents."""
 
 
 @cli.command()

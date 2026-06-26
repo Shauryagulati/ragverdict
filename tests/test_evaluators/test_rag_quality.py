@@ -4,10 +4,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from rag_eval.adapters.base import Citation, Message, RagAdapter, RagResponse
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.base import Verdict
-from rag_eval.evaluators.rag_quality import RagQualityEvaluator
+from ragverdict.adapters.base import Citation, Message, RagAdapter, RagResponse
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.base import Verdict
+from ragverdict.evaluators.rag_quality import RagQualityEvaluator
 
 
 @dataclass

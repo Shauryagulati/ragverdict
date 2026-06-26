@@ -4,16 +4,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Message,
     RagAdapter,
     RagResponse,
     ToolCall,
     ToolSpec,
 )
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.base import Verdict
-from rag_eval.evaluators.tool_coverage import ToolCoverageEvaluator
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.base import Verdict
+from ragverdict.evaluators.tool_coverage import ToolCoverageEvaluator
 
 
 @dataclass

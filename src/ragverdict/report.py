@@ -11,8 +11,8 @@ from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
-from rag_eval.config import Config
-from rag_eval.evaluators.base import TestResult, Verdict
+from ragverdict.config import Config
+from ragverdict.evaluators.base import TestResult, Verdict
 
 _VERDICT_STYLE: dict[Verdict, str] = {
     Verdict.PASS: "bold green",
@@ -33,7 +33,7 @@ class Reporter:
 
     def start(self, *, test_count: int) -> None:
         self._test_count = test_count
-        self.console.rule("[bold]rag-eval[/bold]")
+        self.console.rule("[bold]ragverdict[/bold]")
         if test_count == 0:
             self.console.print("[yellow]No tests defined in config — nothing to run.[/yellow]")
             return
@@ -109,7 +109,7 @@ class Reporter:
         (self.out_dir / "report.json").write_text(json.dumps(payload, indent=2, default=str))
 
     def _write_markdown(self, results: list[TestResult]) -> None:
-        lines: list[str] = ["# rag-eval report", ""]
+        lines: list[str] = ["# ragverdict report", ""]
         if not results:
             lines.append("_No tests ran._")
         else:

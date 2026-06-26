@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "rag-eval"
-version = "0.2.0"
+name = "ragverdict"
+version = "0.2.1"
 description = "pytest for RAG agents — behavioral audits with PASS/FAIL/WEAK verdicts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,22 +41,22 @@ dev = [
 ]
 
 [project.scripts]
-rag-eval = "rag_eval.cli:main"
+ragverdict = "ragverdict.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Shauryagulati/rag-eval"
-Repository = "https://github.com/Shauryagulati/rag-eval"
+Homepage = "https://github.com/Shauryagulati/ragverdict"
+Repository = "https://github.com/Shauryagulati/ragverdict"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rag_eval"]
+packages = ["src/ragverdict"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/rag_eval", "README.md", "LICENSE", "pyproject.toml"]
+include = ["src/ragverdict", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src/rag_eval"]
+files = ["src/ragverdict"]
 plugins = ["pydantic.mypy"]
 
 [tool.ruff]

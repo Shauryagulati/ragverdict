@@ -1,12 +1,12 @@
-"""Regression smoke: induce known broken adapter behaviors and confirm rag-eval flags them.
+"""Regression smoke: induce known broken adapter behaviors and confirm ragverdict flags them.
 
-This is the test that proves the framework is doing its job. If rag-eval fails to fail
+This is the test that proves the framework is doing its job. If ragverdict fails to fail
 on these, something has slipped.
 """
 
 from __future__ import annotations
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Citation,
     Message,
     RagAdapter,
@@ -14,12 +14,12 @@ from rag_eval.adapters.base import (
     SourceDoc,
     ToolSpec,
 )
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.base import Verdict
-from rag_eval.evaluators.citation_audit import CitationAuditEvaluator
-from rag_eval.evaluators.edge_cases import EdgeCasesEvaluator
-from rag_eval.evaluators.rag_quality import RagQualityEvaluator
-from rag_eval.evaluators.tool_coverage import ToolCoverageEvaluator
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.base import Verdict
+from ragverdict.evaluators.citation_audit import CitationAuditEvaluator
+from ragverdict.evaluators.edge_cases import EdgeCasesEvaluator
+from ragverdict.evaluators.rag_quality import RagQualityEvaluator
+from ragverdict.evaluators.tool_coverage import ToolCoverageEvaluator
 
 
 class DanglingCitationAdapter(RagAdapter):

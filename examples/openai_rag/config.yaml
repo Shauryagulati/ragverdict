@@ -1,4 +1,4 @@
-# Example rag-eval config exercising the OpenAI-backed adapter starter.
+# Example ragverdict config exercising the OpenAI-backed adapter starter.
 #
 # This config runs offline against the mock OpenAI adapter (see adapter.py).
 # Swap the adapter for your real one and the same tests apply.

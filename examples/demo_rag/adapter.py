@@ -1,6 +1,6 @@
 """DemoAdapter — a tiny deterministic RAG over a markdown corpus.
 
-This is the reference adapter used in `rag-eval`'s own demo and tests. It deliberately
+This is the reference adapter used in `ragverdict`'s own demo and tests. It deliberately
 exposes a small surface so all three V0 evaluators (tool_coverage, rag_quality,
 citation_audit) have something concrete to bite into.
 """
@@ -12,7 +12,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Citation,
     ContextDoc,
     Message,

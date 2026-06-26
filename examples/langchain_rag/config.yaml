@@ -1,4 +1,4 @@
-# Example rag-eval config for the LangChain-backed adapter starter.
+# Example ragverdict config for the LangChain-backed adapter starter.
 #
 # Runs offline against the mock LangChain adapter (see adapter.py).
 # Swap the adapter for your real LangChain RetrievalQA chain and the tests still apply.

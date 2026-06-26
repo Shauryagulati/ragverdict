@@ -1,18 +1,18 @@
 # LangChain RAG starter
 
-A copy-paste template for wiring a LangChain-backed RAG into rag-eval.
+A copy-paste template for wiring a LangChain-backed RAG into ragverdict.
 
 ## What's here
 
 | File | Purpose |
 |---|---|
 | `adapter.py` | `LangChainRagAdapter` — subclass of `RagAdapter` showing the four methods you'd replace with real LangChain calls (retriever, RetrievalQA chain, citation parsing, agent tool calls). Runs offline against a mock corpus. |
-| `config.yaml` | rag-eval config that exercises all four evaluators against the adapter. |
+| `config.yaml` | ragverdict config that exercises all four evaluators against the adapter. |
 
 ## Try it (offline, no dependencies)
 
 ```bash
-rag-eval run examples/langchain_rag/config.yaml --no-judge
+ragverdict run examples/langchain_rag/config.yaml --no-judge
 ```
 
 LangChain itself is **not** required to run this example — the adapter mocks the
@@ -52,7 +52,7 @@ exactly the parts that connect to LangChain.
   into the final response before returning from `query()` — `RagResponse` expects a
   complete answer.
 
-## What rag-eval will catch (worth knowing before you wire it up)
+## What ragverdict will catch (worth knowing before you wire it up)
 
 | Failure mode | Caught by |
 |---|---|

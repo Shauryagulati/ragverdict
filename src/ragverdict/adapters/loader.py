@@ -7,9 +7,9 @@ import os
 import sys
 from typing import Any
 
-from rag_eval.adapters.base import RagAdapter
-from rag_eval.adapters.http import HttpAdapter
-from rag_eval.config import AdapterConfig, HttpAdapterConfig, PythonAdapterConfig
+from ragverdict.adapters.base import RagAdapter
+from ragverdict.adapters.http import HttpAdapter
+from ragverdict.config import AdapterConfig, HttpAdapterConfig, PythonAdapterConfig
 
 
 class AdapterLoadError(Exception):
@@ -31,7 +31,7 @@ def load_adapter(config: AdapterConfig) -> RagAdapter:
 def _load_python(module_name: str, class_name: str) -> RagAdapter:
     # User adapters live in their project tree, not in this package — make cwd
     # importable so `module: examples.demo_rag.adapter` resolves when the user
-    # runs `rag-eval` from their project root.
+    # runs `ragverdict` from their project root.
     cwd = os.getcwd()
     if cwd not in sys.path:
         sys.path.insert(0, cwd)

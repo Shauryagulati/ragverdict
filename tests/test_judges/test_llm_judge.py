@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock
 import anthropic
 import pytest
 
-from rag_eval.judges.llm_judge import (
+from ragverdict.judges.llm_judge import (
     JudgeError,
     JudgeScore,
     LLMJudge,

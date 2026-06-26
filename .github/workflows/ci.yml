@@ -53,7 +53,7 @@ jobs:
         run: mypy
 
       - name: Pytest with coverage
-        run: pytest --cov=rag_eval --cov-report=term-missing --cov-report=xml
+        run: pytest --cov=ragverdict --cov-report=term-missing --cov-report=xml
 
       # Upload the XML coverage report as an artifact for inspection.
       # Skipped on non-3.12 runs to avoid duplicate artifacts.

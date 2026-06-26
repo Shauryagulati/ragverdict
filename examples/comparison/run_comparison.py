@@ -1,8 +1,8 @@
-"""Head-to-head comparison driver: runs rag-eval against deliberately-broken RAG
+"""Head-to-head comparison driver: runs ragverdict against deliberately-broken RAG
 adapters to make the differentiation vs metric-centric tools concrete.
 
 Each scenario uses an adapter that exhibits a real production failure mode. We
-run rag-eval and show what verdict it returns. The writeup in README.md walks
+run ragverdict and show what verdict it returns. The writeup in README.md walks
 through what a metric-centric tool (RAGAs) would have reported on the same
 response, and why.
 
@@ -20,10 +20,10 @@ from dataclasses import dataclass
 # looks like."
 sys.path.insert(0, ".")
 
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.citation_audit import CitationAuditEvaluator
-from rag_eval.evaluators.edge_cases import EdgeCasesEvaluator
-from rag_eval.evaluators.tool_coverage import ToolCoverageEvaluator
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.citation_audit import CitationAuditEvaluator
+from ragverdict.evaluators.edge_cases import EdgeCasesEvaluator
+from ragverdict.evaluators.tool_coverage import ToolCoverageEvaluator
 from tests.test_regression_smoke import (
     CompliantAdapter,
     DanglingCitationAdapter,
@@ -36,9 +36,9 @@ class Scenario:
     name: str
     failure_mode: str
     what_ragas_would_likely_say: str
-    rag_eval_evaluator: str
-    rag_eval_caught_it: bool
-    rag_eval_detail: str
+    ragverdict_evaluator: str
+    ragverdict_caught_it: bool
+    ragverdict_detail: str
 
 
 def run() -> list[Scenario]:
@@ -65,9 +65,9 @@ def run() -> list[Scenario]:
                 "groundedness, not citation-vs-corpus integrity. The dangling "
                 "[src:GHOST] is invisible to metric scoring."
             ),
-            rag_eval_evaluator="citation_audit",
-            rag_eval_caught_it=(result.verdict.value == "FAIL"),
-            rag_eval_detail=result.detail,
+            ragverdict_evaluator="citation_audit",
+            ragverdict_caught_it=(result.verdict.value == "FAIL"),
+            ragverdict_detail=result.detail,
         )
     )
 
@@ -90,9 +90,9 @@ def run() -> list[Scenario]:
                 "If the response happens to be plausible, faithfulness/relevance "
                 "look fine. The silent tool is completely invisible."
             ),
-            rag_eval_evaluator="tool_coverage",
-            rag_eval_caught_it=(result.verdict.value == "FAIL"),
-            rag_eval_detail=result.detail,
+            ragverdict_evaluator="tool_coverage",
+            ragverdict_caught_it=(result.verdict.value == "FAIL"),
+            ragverdict_detail=result.detail,
         )
     )
 
@@ -129,9 +129,9 @@ def run() -> list[Scenario]:
                 "confidently agrees with a false premise gets a high relevance "
                 "score because it answered the question on-topic."
             ),
-            rag_eval_evaluator="edge_cases.contradiction",
-            rag_eval_caught_it=(result.verdict.value == "FAIL"),
-            rag_eval_detail=result.detail,
+            ragverdict_evaluator="edge_cases.contradiction",
+            ragverdict_caught_it=(result.verdict.value == "FAIL"),
+            ragverdict_detail=result.detail,
         )
     )
 
@@ -141,20 +141,20 @@ def run() -> list[Scenario]:
 def print_report(scenarios: list[Scenario]) -> None:
     print()
     print("=" * 78)
-    print("HEAD-TO-HEAD: rag-eval vs metric-centric tools (illustrated with RAGAs)")
+    print("HEAD-TO-HEAD: ragverdict vs metric-centric tools (illustrated with RAGAs)")
     print("=" * 78)
     for i, s in enumerate(scenarios, start=1):
         print()
         print(f"── Scenario {i}: {s.name}")
         print(f"   Failure mode:   {s.failure_mode}")
         print(f"   RAGAs likely:   {s.what_ragas_would_likely_say}")
-        print(f"   rag-eval:       {s.rag_eval_evaluator}")
-        verdict_label = "✅ CAUGHT" if s.rag_eval_caught_it else "❌ MISSED"
-        print(f"   Verdict:        {verdict_label} — {s.rag_eval_detail}")
+        print(f"   ragverdict:       {s.ragverdict_evaluator}")
+        verdict_label = "✅ CAUGHT" if s.ragverdict_caught_it else "❌ MISSED"
+        print(f"   Verdict:        {verdict_label} — {s.ragverdict_detail}")
     print()
     print("=" * 78)
-    caught = sum(1 for s in scenarios if s.rag_eval_caught_it)
-    print(f"Summary: rag-eval caught {caught}/{len(scenarios)} failures that metric")
+    caught = sum(1 for s in scenarios if s.ragverdict_caught_it)
+    print(f"Summary: ragverdict caught {caught}/{len(scenarios)} failures that metric")
     print("scoring would have given high scores to.")
     print("=" * 78)
     print()

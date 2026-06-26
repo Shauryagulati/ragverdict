@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.config import (
+from ragverdict.config import (
     Config,
     ConfigError,
     HttpAdapterConfig,

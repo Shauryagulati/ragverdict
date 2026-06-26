@@ -1,13 +1,13 @@
-# rag-eval vs metric-centric eval tools
+# ragverdict vs metric-centric eval tools
 
 A concrete, runnable comparison: three real production failure modes, what
-metric-centric RAG eval tools see, and what rag-eval catches.
+metric-centric RAG eval tools see, and what ragverdict catches.
 
 ## The setup
 
 Three deliberately-broken adapters (the same ones in
 [`tests/test_regression_smoke.py`](../../tests/test_regression_smoke.py)),
-each exhibiting a real production failure pattern. We run rag-eval against each and
+each exhibiting a real production failure pattern. We run ragverdict against each and
 reason about what a metric-centric tool like RAGAs would report on the same response.
 
 ## Run it yourself
@@ -16,7 +16,7 @@ reason about what a metric-centric tool like RAGAs would report on the same resp
 python examples/comparison/run_comparison.py
 ```
 
-No API key required — uses the heuristic-fallback path that rag-eval ships for `--no-judge` runs.
+No API key required — uses the heuristic-fallback path that ragverdict ships for `--no-judge` runs.
 
 ## The three scenarios
 
@@ -28,7 +28,7 @@ No API key required — uses the heuristic-fallback path that rag-eval ships for
 | | Says about this response |
 |---|---|
 | **RAGAs faithfulness** | ~0.9 — the response IS grounded in the retrieved context (the `REAL` document was retrieved and the answer reflects it). Faithfulness measures groundedness in retrieved context, not citation-vs-corpus integrity. |
-| **rag-eval `citation_audit`** | **FAIL** — "1/1 citations are dangling (source_id not in corpus)". |
+| **ragverdict `citation_audit`** | **FAIL** — "1/1 citations are dangling (source_id not in corpus)". |
 
 **Why metric scoring misses it:** RAGAs checks "is the answer grounded in the chunks
 that came back from retrieval." The chunks that came back are real. The CITATION the
@@ -42,7 +42,7 @@ calls it. Answers from prior knowledge instead.
 | | Says about this response |
 |---|---|
 | **RAGAs / ARES / TruLens** | Has no concept of "did the tool fire." Scores the response text only. If the response is plausible, faithfulness and relevance look fine. |
-| **rag-eval `tool_coverage`** | **FAIL** — "0/1 tools fired cleanly — failed: search". |
+| **ragverdict `tool_coverage`** | **FAIL** — "0/1 tools fired cleanly — failed: search". |
 
 **Why metric scoring misses it:** All five metric-centric tools (RAGAs, ARES,
 TruLens, Phoenix, DeepEval) operate on `(query, response, retrieved_context)` tuples.
@@ -59,10 +59,10 @@ agrees with the premise and confidently invents a rationale.
 | | Says about this response |
 |---|---|
 | **RAGAs answer relevance** | ~0.85 — the response addresses the question that was asked. Relevance measures "does the answer cover what was asked"; an agent that confidently agrees with the false premise gets a high score because it stayed on-topic. |
-| **rag-eval `edge_cases.contradiction`** | **FAIL** — "no pushback detected". |
+| **ragverdict `edge_cases.contradiction`** | **FAIL** — "no pushback detected". |
 
 **Why metric scoring misses it:** None of the major rubrics distinguish "did the
-agent push back on the premise" from "did the agent answer the question." rag-eval
+agent push back on the premise" from "did the agent answer the question." ragverdict
 has a dedicated `pushback` judge rubric for this exact distinction (with a heuristic
 fallback for offline runs).
 
@@ -73,7 +73,7 @@ grounded, it's on-topic, it answers the question. Metric scoring grades the resp
 The bug isn't in the response — it's in the agent's *behavior*: a tool that didn't
 fire, a citation that doesn't resolve, a premise that wasn't challenged.
 
-rag-eval tests behavior. That's the gap.
+ragverdict tests behavior. That's the gap.
 
 ## When to use each
 
@@ -84,15 +84,15 @@ This isn't either/or. A mature RAG team uses both:
 | Track faithfulness / relevance / context-recall metrics over time on a benchmark | **RAGAs**, **ARES** (with confidence intervals), **TruLens** |
 | Hosted dashboards, traces, span-level debugging | **TruLens**, **Arize Phoenix** |
 | pytest-style assertions on metric thresholds | **DeepEval** |
-| Verify the agent **behaves** correctly — tools fire, citations resolve, premises challenged, edges handled — with CI exit codes | **rag-eval** |
+| Verify the agent **behaves** correctly — tools fire, citations resolve, premises challenged, edges handled — with CI exit codes | **ragverdict** |
 
-The metric-centric tools tell you whether your responses are *good*. rag-eval tells
+The metric-centric tools tell you whether your responses are *good*. ragverdict tells
 you whether your agent is *correct*. Both matter.
 
 ## One-liner you can quote
 
-> Metric-centric RAG eval scores how a response looks. rag-eval tests whether the
+> Metric-centric RAG eval scores how a response looks. ragverdict tests whether the
 > agent behaves correctly — tools firing, citations resolving, false premises
 > challenged, edges handled. A response can score 0.9 faithfulness while citing a
-> document that doesn't exist; rag-eval catches that. The two compose: RAGAs for
-> quality tracking, rag-eval for behavioral regression in CI.
+> document that doesn't exist; ragverdict catches that. The two compose: RAGAs for
+> quality tracking, ragverdict for behavioral regression in CI.

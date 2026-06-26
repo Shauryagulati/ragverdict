@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from rag_eval.config import Thresholds
+from ragverdict.config import Thresholds
 
 
 @pytest.fixture

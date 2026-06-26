@@ -1,4 +1,4 @@
-"""Pydantic schemas + YAML loader for rag-eval configuration."""
+"""Pydantic schemas + YAML loader for ragverdict configuration."""
 
 from __future__ import annotations
 

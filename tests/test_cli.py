@@ -5,14 +5,14 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from rag_eval.cli import cli
+from ragverdict.cli import cli
 
 
 def test_cli_version() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "rag-eval" in result.output
+    assert "ragverdict" in result.output
 
 
 def test_cli_empty_tests_exits_zero(tmp_path: Path) -> None:

@@ -1,8 +1,17 @@
 # Changelog
 
-All notable changes to `rag-eval` are documented here. The format follows
+All notable changes to `ragverdict` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.1] — 2026-06-25
+
+### Changed
+
+- **Renamed the project from `rag-eval` to `ragverdict`.** The PyPI name `rag-eval` was
+  already taken by an unrelated project, and `ragverdict` better reflects the output model
+  — PASS / WEAK / FAIL **verdicts**, not metric averages. No functional changes: the CLI is
+  now `ragverdict run …` and the public import is `import ragverdict`.
 
 ## [0.2.0] — 2026-05-18
 
@@ -59,7 +68,7 @@ Initial release.
     scores per-citation support
 - `LLMJudge` backed by the Anthropic SDK with `messages.parse()` + Pydantic schemas; three
   rubrics (faithfulness, relevance, refusal) under `cache_control={"type":"ephemeral"}`
-- Click CLI: `rag-eval run <config.yaml>` with `--no-judge` and `--out-dir` options
+- Click CLI: `ragverdict run <config.yaml>` with `--no-judge` and `--out-dir` options
 - Rich live table during the run; Markdown + JSON reports at the end
 - Bundled `examples/demo_rag/` reference agent over a fictional "Acme Corp" markdown corpus
 - 41 tests; mypy `--strict` clean; ruff clean

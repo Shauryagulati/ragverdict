@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from rag_eval.adapters.base import (
+from ragverdict.adapters.base import (
     Citation,
     ContextDoc,
     Message,
@@ -59,7 +59,7 @@ class OpenAIRagAdapter(RagAdapter):
         #   self._index = qdrant_client.QdrantClient(...)
         self._openai = openai_client  # unused in the mock
 
-    # ---- rag-eval contract -----------------------------------------------
+    # ---- ragverdict contract -----------------------------------------------
 
     def query(
         self,

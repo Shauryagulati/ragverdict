@@ -1,6 +1,8 @@
-"""Adapters connect rag-eval to user-defined RAG systems."""
+"""ragverdict — pytest for RAG agents."""
 
-from rag_eval.adapters.base import (
+__version__ = "0.2.1"
+
+from ragverdict.adapters.base import (
     Citation,
     ContextDoc,
     Message,
@@ -10,14 +12,19 @@ from rag_eval.adapters.base import (
     ToolCall,
     ToolSpec,
 )
+from ragverdict.evaluators.base import Evaluator, TestResult, Verdict
 
 __all__ = [
     "Citation",
     "ContextDoc",
+    "Evaluator",
     "Message",
     "RagAdapter",
     "RagResponse",
     "SourceDoc",
+    "TestResult",
     "ToolCall",
     "ToolSpec",
+    "Verdict",
+    "__version__",
 ]

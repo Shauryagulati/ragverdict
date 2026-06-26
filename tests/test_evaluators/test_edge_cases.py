@@ -15,11 +15,11 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from rag_eval.adapters.base import Message, RagAdapter, RagResponse
-from rag_eval.config import TestSpec, Thresholds
-from rag_eval.evaluators.base import Verdict
-from rag_eval.evaluators.edge_cases import EdgeCasesEvaluator, EdgeCasesSpec
-from rag_eval.judges.llm_judge import LLMJudge, PushbackVerdict
+from ragverdict.adapters.base import Message, RagAdapter, RagResponse
+from ragverdict.config import TestSpec, Thresholds
+from ragverdict.evaluators.base import Verdict
+from ragverdict.evaluators.edge_cases import EdgeCasesEvaluator, EdgeCasesSpec
+from ragverdict.judges.llm_judge import LLMJudge, PushbackVerdict
 
 
 @dataclass
@@ -606,6 +606,6 @@ def test_multi_turn_error_when_adapter_raises() -> None:
 
 def test_registered_under_edge_cases_name() -> None:
     """Confirms the @register decorator wired the evaluator into the registry."""
-    from rag_eval.evaluators import EVALUATORS
+    from ragverdict.evaluators import EVALUATORS
 
     assert EVALUATORS["edge_cases"] is EdgeCasesEvaluator

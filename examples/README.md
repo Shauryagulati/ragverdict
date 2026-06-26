@@ -4,15 +4,15 @@ This directory has three flavors of example:
 
 | Directory | What it is | When to look at it |
 |---|---|---|
-| [`demo_rag/`](./demo_rag/) | Bundled reference adapter over a markdown corpus | First-time tour. `rag-eval run examples/demo_rag/config.yaml` works on a fresh clone. |
-| [`openai_rag/`](./openai_rag/) | Copy-paste starter for an OpenAI-backed RAG | You're wiring rag-eval into a project that uses the OpenAI SDK |
-| [`langchain_rag/`](./langchain_rag/) | Copy-paste starter for a LangChain-backed RAG | You're wiring rag-eval into a LangChain `RetrievalQA` / LCEL chain |
-| [`comparison/`](./comparison/) | Side-by-side artifact: rag-eval vs metric-centric tools | You want to understand *why* this exists (or you want a one-page explainer to share) |
+| [`demo_rag/`](./demo_rag/) | Bundled reference adapter over a markdown corpus | First-time tour. `ragverdict run examples/demo_rag/config.yaml` works on a fresh clone. |
+| [`openai_rag/`](./openai_rag/) | Copy-paste starter for an OpenAI-backed RAG | You're wiring ragverdict into a project that uses the OpenAI SDK |
+| [`langchain_rag/`](./langchain_rag/) | Copy-paste starter for a LangChain-backed RAG | You're wiring ragverdict into a LangChain `RetrievalQA` / LCEL chain |
+| [`comparison/`](./comparison/) | Side-by-side artifact: ragverdict vs metric-centric tools | You want to understand *why* this exists (or you want a one-page explainer to share) |
 
 ## `demo_rag/`
 
 A reference RAG agent that runs against a tiny in-tree markdown corpus about a fictional
-"Acme Corp." It exists to (a) make rag-eval's `rag-eval run` go on a fresh clone without
+"Acme Corp." It exists to (a) make ragverdict's `ragverdict run` go on a fresh clone without
 any setup, and (b) demonstrate what a `RagAdapter` looks like.
 
 ### What's in here
@@ -33,10 +33,10 @@ demo_rag/
 
 ```bash
 # With the LLM judge (requires ANTHROPIC_API_KEY)
-rag-eval run examples/demo_rag/config.yaml
+ragverdict run examples/demo_rag/config.yaml
 
 # Offline — hard assertions only, no judge calls
-rag-eval run examples/demo_rag/config.yaml --no-judge
+ragverdict run examples/demo_rag/config.yaml --no-judge
 ```
 
 ### What each test exercises
@@ -53,7 +53,7 @@ rag-eval run examples/demo_rag/config.yaml --no-judge
 Substring matching with a stopword filter — score each paragraph by token hits, pick the
 densest, refuse if no paragraph crosses a minimum-hit threshold. It is deliberately simple.
 That is the point: a real RAG system will have higher recall and better citation
-fidelity, and rag-eval's job is to verify *that*.
+fidelity, and ragverdict's job is to verify *that*.
 
 ### Adapting this to your project
 

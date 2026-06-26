@@ -7,11 +7,11 @@ import time
 from pathlib import Path
 from typing import Literal
 
-from rag_eval.adapters.loader import load_adapter
-from rag_eval.config import Config, load_config
-from rag_eval.evaluators import EVALUATORS
-from rag_eval.evaluators.base import TestResult, Verdict
-from rag_eval.judges.llm_judge import JudgeError, LLMJudge
+from ragverdict.adapters.loader import load_adapter
+from ragverdict.config import Config, load_config
+from ragverdict.evaluators import EVALUATORS
+from ragverdict.evaluators.base import TestResult, Verdict
+from ragverdict.judges.llm_judge import JudgeError, LLMJudge
 
 # Sentinel for "auto-init the judge from config" (vs. None which means "no judge").
 _AUTO: Literal["auto"] = "auto"
@@ -47,7 +47,7 @@ class Runner:
 
     def execute(self) -> tuple[list[TestResult], int]:
         """Run every test in config. Returns (results, exit_code)."""
-        from rag_eval.report import Reporter  # local import to break the cycle
+        from ragverdict.report import Reporter  # local import to break the cycle
 
         adapter = load_adapter(self.config.adapter)
 
