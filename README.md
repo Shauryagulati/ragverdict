@@ -8,6 +8,8 @@
 quality, citation verification, hallucination guardrails — with PASS / FAIL / WEAK verdicts,
 not floating-point metric averages.
 
+![ragverdict running the bundled demo — all green](docs/demo.gif)
+
 ```
 ┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ Test               ┃ Evaluator      ┃ Verdict ┃ Latency ┃ Detail                          ┃
