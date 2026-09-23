@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,16 +21,27 @@ from ragverdict.bench.predict import (
     ClaudeBatchRunner,
     PredictionStore,
     check_budget,
+    pending,
     run_claude_live,
     run_jev,
 )
 from ragverdict.bench.ragtruth import ensure_downloaded, load_examples
-from ragverdict.bench.runs import PARAPHRASES, RUNS, RunSpec, load_frozen, select_examples
+from ragverdict.bench.runs import (
+    PARAPHRASES,
+    RUNS,
+    FrozenConfig,
+    RunSpec,
+    load_frozen,
+    select_examples,
+)
 from ragverdict.bench.summary import build_summary
 from ragverdict.judges.jev_judge import JevJudge
 from ragverdict.judges.llm_judge import LLMJudge
 
 FROZEN_PATH = Path("bench/frozen_config.json")  # run bench commands from the repo root
+# Test-split runs that don't pin their own paraphrase — they use the frozen one, so they
+# also need it registered before they're allowed to run.
+_FROZEN_GATED_RUNS = ("jev", "jev-flip")
 console = Console()
 
 
@@ -47,6 +59,39 @@ def ragtruth() -> None:
     """Jev vs Claude vs cascade on RAGTruth (human-labeled hallucinations)."""
 
 
+def _preflight(specs: list[RunSpec]) -> list[str]:
+    """Everything that must be true before any run executes: credentials, a readable and
+    registered frozen config (for runs that depend on it). Budget is checked separately by
+    the caller, after this — nothing here needs network or disk access to the dataset."""
+    problems: list[str] = []
+    if any(spec.judge in ("jev", "chat") for spec in specs) and not os.environ.get(
+        "OPENROUTER_API_KEY"
+    ):
+        problems.append("OPENROUTER_API_KEY is not set (required for jev/chat runs)")
+    if any(spec.judge in ("claude_batch", "claude_live") for spec in specs) and not os.environ.get(
+        "ANTHROPIC_API_KEY"
+    ):
+        problems.append("ANTHROPIC_API_KEY is not set (required for claude runs)")
+
+    gated = [spec for spec in specs if spec.name in _FROZEN_GATED_RUNS]
+    if gated:
+        names = ", ".join(spec.name for spec in gated)
+        if not FROZEN_PATH.exists():
+            problems.append(f"{FROZEN_PATH} is not readable (required by {names})")
+        else:
+            try:
+                frozen, _sha = load_frozen(FROZEN_PATH)
+            except Exception as exc:  # malformed frozen config: fail closed, not a crash
+                problems.append(f"could not load {FROZEN_PATH}: {exc}")
+            else:
+                if not frozen.registered:
+                    problems.append(
+                        f"frozen config is not registered (registered=false in {FROZEN_PATH}); "
+                        f"complete pre-registration before running {names}"
+                    )
+    return problems
+
+
 @ragtruth.command()
 @click.argument("names", nargs=-1, required=True)
 @click.option("--out", type=click.Path(path_type=Path), default=Path("bench_results"), show_default=True)
@@ -55,11 +100,17 @@ def run(names: tuple[str, ...], out: Path, max_spend_usd: float) -> None:
     """Execute named runs (see ragverdict/bench/runs.py), caching predictions under --out."""
     unknown = [n for n in names if n not in RUNS]
     if unknown:
-        click.echo(f"error: unknown run(s): {', '.join(unknown)}; known: {', '.join(RUNS)}")
+        click.echo(f"error: unknown run(s): {', '.join(unknown)}; known: {', '.join(RUNS)}", err=True)
+        sys.exit(2)
+    specs = [RUNS[n] for n in names]
+    problems = _preflight(specs)
+    if problems:
+        for problem in problems:
+            click.echo(f"error: {problem}", err=True)
         sys.exit(2)
     data_dir = _data_dir()
     store = PredictionStore(out)
-    plans = [(RUNS[n], select_examples(RUNS[n], data_dir)) for n in names]
+    plans = [(spec, select_examples(spec, data_dir)) for spec in specs]
     try:
         estimate = sum(
             check_budget(len(exs) * spec.repeats, spec.cost_per_call, max_spend_usd)
@@ -67,22 +118,50 @@ def run(names: tuple[str, ...], out: Path, max_spend_usd: float) -> None:
         )
         check_budget(1, estimate, max_spend_usd)
     except BudgetError as exc:
-        click.echo(f"error: {exc}")
+        click.echo(f"error: {exc}", err=True)
         sys.exit(2)
     click.echo(f"estimated spend ${estimate:.2f} (cap ${max_spend_usd:.2f})")
     for spec, exs in plans:
+        n_total = len(exs) * spec.repeats
+        n_computed = len(pending(exs, store.load(spec.name), spec.repeats))
+        n_cached = n_total - n_computed
+        started_at = datetime.now(timezone.utc).isoformat()
         started = time.perf_counter()
         preds = _execute(spec, exs, store, data_dir)
         wall_clock = time.perf_counter() - started
-        meta = out / "meta" / f"{spec.name}.json"
-        meta.parent.mkdir(parents=True, exist_ok=True)
-        meta.write_text(json.dumps({"run": spec.name, "n": len(preds), "wall_clock_s": wall_clock}))
+        _record_invocation(out, spec, started_at, wall_clock, n_computed, n_cached)
         errors = sum(p.error is not None for p in preds)
         cost = sum(p.cost_usd for p in preds)
         click.echo(
             f"{spec.name}: {len(preds)} predictions, {errors} errors, ${cost:.4f} billed, "
             f"{wall_clock:.1f}s wall clock"
         )
+
+
+def _record_invocation(
+    out: Path, spec: RunSpec, started_at: str, wall_clock_s: float, n_computed: int, n_cached: int
+) -> None:
+    """Append one invocation to `<out>/meta/<run>.json` (never overwrite prior invocations —
+    build_summary's wall-clock number is a sum over every invocation that computed anything)."""
+    meta_path = out / "meta" / f"{spec.name}.json"
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    record: dict[str, Any] = (
+        json.loads(meta_path.read_text())
+        if meta_path.exists()
+        else {"run": spec.name, "invocations": []}
+    )
+    invocation: dict[str, Any] = {
+        "started_at": started_at,
+        "wall_clock_s": wall_clock_s,
+        "n_computed": n_computed,
+        "n_cached": n_cached,
+    }
+    if spec.name in _FROZEN_GATED_RUNS:
+        frozen, sha = load_frozen(FROZEN_PATH)
+        invocation["jev_paraphrase"] = frozen.jev_paraphrase
+        invocation["frozen_sha256"] = sha
+    record["invocations"].append(invocation)
+    meta_path.write_text(json.dumps(record, indent=2))
 
 
 def _execute(spec: RunSpec, exs: list[Any], store: PredictionStore, data_dir: Path) -> list[Any]:
@@ -130,14 +209,42 @@ def tune(out: Path) -> None:
                 click.echo(f"    band ({lo:.2f},{hi:.2f}): {len(inside)} in band, Jev accuracy {acc:.2f}")
 
 
+def _frozen_mismatch(out: Path, frozen: FrozenConfig, sha: str) -> str | None:
+    """None if every recorded jev_paraphrase/frozen_sha256 for the frozen-gated runs matches
+    the frozen config being summarized against; otherwise a message naming the mismatch."""
+    for run_name in _FROZEN_GATED_RUNS:
+        meta_path = out / "meta" / f"{run_name}.json"
+        if not meta_path.exists():
+            continue
+        record = json.loads(meta_path.read_text())
+        for inv in record.get("invocations", []):
+            recorded_paraphrase = inv.get("jev_paraphrase")
+            recorded_sha = inv.get("frozen_sha256")
+            if recorded_paraphrase is None and recorded_sha is None:
+                continue  # invocation predates this recording (or isn't frozen-gated)
+            if recorded_paraphrase != frozen.jev_paraphrase or recorded_sha != sha:
+                return (
+                    f"run {run_name!r} was executed under a different frozen config "
+                    f"(recorded jev_paraphrase={recorded_paraphrase!r}, "
+                    f"frozen_sha256={recorded_sha!r}; current jev_paraphrase="
+                    f"{frozen.jev_paraphrase!r}, frozen_sha256={sha!r}); rerun {run_name!r} "
+                    "under the current frozen config, or summarize against the one it ran under"
+                )
+    return None
+
+
 @ragtruth.command()
 @click.option("--out", type=click.Path(path_type=Path), default=Path("bench_results"), show_default=True)
 def summarize(out: Path) -> None:
     """Compute summary.json from cached predictions. Makes no API calls."""
     data_dir = _data_dir()
     frozen, sha = load_frozen(FROZEN_PATH)
+    mismatch = _frozen_mismatch(out, frozen, sha)
+    if mismatch:
+        click.echo(f"error: {mismatch}", err=True)
+        sys.exit(2)
     summary = build_summary(
-        {"test": load_examples(data_dir, split="test")},
+        {"test": load_examples(data_dir, split="test", quality="all")},
         PredictionStore(out), frozen, sha,
     )
     out.mkdir(parents=True, exist_ok=True)
@@ -161,8 +268,9 @@ def _print_table(summary: dict[str, Any]) -> None:
             f"${block['cost_usd_per_1k']:.3f}",
             f"{latency:.2f}s" if latency is not None else "—",
         )
-    cascade = summary.get("cascade", {}).get("frozen_band")
-    if cascade:
-        table.add_row("cascade", str(summary["cascade"]["n"]), "—", f"{cascade['f1']:.3f}",
-                      f"${cascade['cost_usd_per_1k']:.3f}", "—")
+    cascade = summary.get("cascade") or {}
+    frozen_band = cascade.get("frozen_band")
+    if frozen_band:
+        table.add_row("cascade", str(cascade["n"]), "—", f"{frozen_band['f1']:.3f}",
+                      f"${frozen_band['cost_usd_per_1k']:.3f}", "—")
     console.print(table)

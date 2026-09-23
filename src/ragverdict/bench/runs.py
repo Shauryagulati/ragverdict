@@ -132,6 +132,9 @@ class FrozenConfig(BaseModel):
     dataset_commit: str
     bootstrap_resamples: int
     bootstrap_seed: int
+    # Gate for test-split runs that use the frozen paraphrase (jev, jev-flip): stays False
+    # until the pre-registration commit (Task 13) locks jev_threshold/cascade_band etc.
+    registered: bool = False
 
 
 def load_frozen(path: Path) -> tuple[FrozenConfig, str]:
