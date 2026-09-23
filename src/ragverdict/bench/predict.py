@@ -53,6 +53,9 @@ class Prediction:
     error_kind: str | None = None  # "transport" (retryable) | "judge" (final) | None (no error)
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    supported_claims: int = 0
+    total_claims: int = 0
+    response_id: str = ""  # provider response id (Anthropic message.id / OpenRouter data["id"])
 
 
 def _iter_predictions(path: Path) -> Iterator[Prediction]:
@@ -200,7 +203,24 @@ def collect(
 
 
 class _JevLike(Protocol):
+    faithfulness_question: str
+    question_means_unsupported: bool
+
     def faithfulness_answer(self, response_text: str, retrieved_context: str) -> JevAnswer: ...
+    def ask(self, state: dict[str, str], question: str) -> JevAnswer: ...
+
+
+def _reorient_to_supported(answer: JevAnswer) -> JevAnswer:
+    """Same re-orientation `JevJudge.faithfulness_answer` applies when the configured
+    question means "is it unsupported?" — P(yes) becomes P(supported) = 1 - P(yes)."""
+    return JevAnswer(
+        p_yes=1.0 - answer.p_yes,
+        input_tokens=answer.input_tokens,
+        cost_usd=answer.cost_usd,
+        served_model=answer.served_model,
+        latency_s=answer.latency_s,
+        response_id=answer.response_id,
+    )
 
 
 def run_jev(
@@ -211,11 +231,17 @@ def run_jev(
     *,
     repeats: int = 1,
     workers: int = 8,
+    state_builder: Callable[[Example], dict[str, str]] | None = None,
 ) -> list[Prediction]:
     def one(item: tuple[Example, int]) -> None:
         ex, repeat = item
         try:
-            answer = judge.faithfulness_answer(ex.response, ex.source)
+            if state_builder is not None:
+                answer = judge.ask(state_builder(ex), judge.faithfulness_question)
+                if judge.question_means_unsupported:
+                    answer = _reorient_to_supported(answer)
+            else:
+                answer = judge.faithfulness_answer(ex.response, ex.source)
         except JudgeError as exc:
             kind = "transport" if isinstance(exc, JudgeTransportError) else "judge"
             store.append(
@@ -235,6 +261,7 @@ def run_jev(
                 cost_usd=answer.cost_usd,
                 latency_s=answer.latency_s,
                 served_model=answer.served_model,
+                response_id=answer.response_id,
             )
         )
 
@@ -283,6 +310,9 @@ def run_claude_live(
                 reasoning=score.reasoning if score else "",
                 error=error,
                 error_kind=error_kind,
+                supported_claims=score.supported_claims if score else 0,
+                total_claims=score.total_claims if score else 0,
+                response_id=judge.last_response_id,
             )
         )
     return collect(store, run, examples, 1)
@@ -408,14 +438,18 @@ class ClaudeBatchRunner:
         cache_write = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
         cost = claude_cost(self.judge.model, tokens_in, tokens_out, batch=True,
                            cache_read_tokens=cache_read, cache_write_tokens=cache_write)
+        response_id = str(getattr(message, "id", "") or "")
         try:
             score = parse_judge_message(message, JudgeScore)
         except JudgeError as exc:
             return Prediction(run=run, example_id=example_id, repeat=repeat, score=None,
                               input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
                               cache_read_tokens=cache_read, cache_write_tokens=cache_write,
-                              served_model=self.judge.model, error=str(exc), error_kind="judge")
+                              served_model=self.judge.model, error=str(exc), error_kind="judge",
+                              response_id=response_id)
         return Prediction(run=run, example_id=example_id, repeat=repeat, score=score.score,
                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
                           cache_read_tokens=cache_read, cache_write_tokens=cache_write,
-                          served_model=self.judge.model, reasoning=score.reasoning)
+                          served_model=self.judge.model, reasoning=score.reasoning,
+                          supported_claims=score.supported_claims, total_claims=score.total_claims,
+                          response_id=response_id)

@@ -39,11 +39,15 @@ def _ex(i: int, hallucinated: bool = False) -> Example:
 
 class FakeJev:
     def __init__(
-        self, fail_ids: set[str] | None = None, error_cls: type[JudgeError] = JudgeTransportError
+        self, fail_ids: set[str] | None = None, error_cls: type[JudgeError] = JudgeTransportError,
+        faithfulness_question: str = "Q", question_means_unsupported: bool = False,
     ) -> None:
         self.fail_ids = fail_ids or set()
         self.calls: list[str] = []
         self.error_cls = error_cls
+        self.faithfulness_question = faithfulness_question
+        self.question_means_unsupported = question_means_unsupported
+        self.ask_calls: list[tuple[dict[str, str], str]] = []
 
     def faithfulness_answer(self, response_text: str, retrieved_context: str) -> JevAnswer:
         eid = response_text.split()[-1]
@@ -51,7 +55,17 @@ class FakeJev:
         if eid in self.fail_ids:
             raise self.error_cls("jev boom")
         return JevAnswer(p_yes=0.25, input_tokens=100, cost_usd=0.0000042,
-                         served_model="typesafe/jev-1.13-20260917", latency_s=0.3)
+                         served_model="typesafe/jev-1.13-20260917", latency_s=0.3,
+                         response_id=f"gen-{eid}")
+
+    def ask(self, state: dict[str, str], question: str) -> JevAnswer:
+        self.ask_calls.append((state, question))
+        eid = state.get("answer", state.get("response", "")).split()[-1]
+        if eid in self.fail_ids:
+            raise self.error_cls("jev boom")
+        return JevAnswer(p_yes=0.7, input_tokens=50, cost_usd=0.0000021,
+                         served_model="typesafe/jev-1.13-20260917", latency_s=0.2,
+                         response_id=f"gen-{eid}")
 
 
 def test_custom_id_roundtrip() -> None:
@@ -136,6 +150,7 @@ def test_run_jev_records_predictions_and_errors(tmp_path: Path) -> None:
     by_id = {p.example_id: p for p in preds}
     assert by_id["1"].score == 0.25 and by_id["1"].cost_usd == pytest.approx(0.0000042)
     assert by_id["1"].served_model == "typesafe/jev-1.13-20260917"
+    assert by_id["1"].response_id == "gen-1"
     assert by_id["2"].score is None and by_id["2"].error == "jev boom"
     assert by_id["2"].error_kind == "transport"
 
@@ -157,6 +172,39 @@ def test_run_jev_does_not_retry_judge_kind_errors(tmp_path: Path) -> None:
     fake = FakeJev()
     run_jev([_ex(1), _ex(2)], fake, store, "jev")
     assert fake.calls == []  # example 2's judge-kind failure is final
+
+
+def _pilot_state(ex: Example) -> dict[str, str]:
+    return {"question": "q", "context": ex.source, "answer": ex.response}
+
+
+def _answer_only_state(ex: Example) -> dict[str, str]:
+    return {"answer": ex.response}
+
+
+def test_run_jev_state_builder_uses_ask_and_faithfulness_question(tmp_path: Path) -> None:
+    fake = FakeJev(faithfulness_question="pilot Q?")
+    preds = run_jev([_ex(1)], fake, PredictionStore(tmp_path), "jev-pilot", state_builder=_pilot_state)
+    assert fake.ask_calls == [({"question": "q", "context": "src 1", "answer": "resp 1"}, "pilot Q?")]
+    assert preds[0].score == pytest.approx(0.7)  # not re-oriented (question_means_unsupported=False)
+
+
+def test_run_jev_state_builder_reorients_when_question_means_unsupported(tmp_path: Path) -> None:
+    fake = FakeJev(question_means_unsupported=True)
+    preds = run_jev(
+        [_ex(1)], fake, PredictionStore(tmp_path), "jev-pilot", state_builder=_answer_only_state
+    )
+    assert preds[0].score == pytest.approx(0.3)  # 1 - 0.7
+    assert preds[0].response_id == "gen-1"  # preserved through re-orientation
+    assert fake.calls == []  # faithfulness_answer was never used
+
+
+def test_run_jev_state_builder_records_judge_errors(tmp_path: Path) -> None:
+    fake = FakeJev(fail_ids={"1"})
+    preds = run_jev(
+        [_ex(1)], fake, PredictionStore(tmp_path), "jev-pilot", state_builder=_answer_only_state
+    )
+    assert preds[0].score is None and preds[0].error == "jev boom"
 
 
 def test_run_jev_repeats(tmp_path: Path) -> None:
@@ -182,9 +230,12 @@ def test_check_budget() -> None:
 
 # ---------- Claude batch ----------
 
-def _message(score: float) -> Mock:
+def _message(score: float, *, supported_claims: int = 0, total_claims: int = 0) -> Mock:
     return Mock(
-        content=[Mock(type="text", text=JudgeScore(score=score, reasoning="r").model_dump_json())],
+        id="msg_abc123",
+        content=[Mock(type="text", text=JudgeScore(
+            score=score, reasoning="r", supported_claims=supported_claims, total_claims=total_claims
+        ).model_dump_json())],
         stop_reason="end_turn",
         usage=Mock(input_tokens=1000, output_tokens=100, cache_read_input_tokens=500,
                    cache_creation_input_tokens=0),
@@ -240,9 +291,19 @@ def test_batch_submits_shipped_requests_and_parses(tmp_path: Path) -> None:
     assert request["params"] == judge.faithfulness_request("resp 1", "src 1")
     assert {p.example_id: p.score for p in preds} == {"1": 0.5, "2": 0.5}
     assert preds[0].cache_read_tokens == 500
+    assert preds[0].response_id == "msg_abc123"
     assert preds[0].cost_usd == pytest.approx(
         claude_cost("claude-sonnet-5", 1000, 100, batch=True, cache_read_tokens=500)
     )
+
+
+def test_batch_parse_records_claims_and_response_id(tmp_path: Path) -> None:
+    batches = FakeBatches([{}])
+    runner, _ = _batch_runner(tmp_path, batches)
+    message = _message(0.5, supported_claims=2, total_claims=3)
+    pred = runner._parse("claude", "1", 0, message)
+    assert pred.response_id == "msg_abc123"
+    assert pred.supported_claims == 2 and pred.total_claims == 3
 
 
 def test_failed_requests_retried_once_then_recorded(tmp_path: Path) -> None:
@@ -348,13 +409,15 @@ def test_batch_skips_cached(tmp_path: Path) -> None:
 
 def test_run_claude_live_records_latency_and_tokens(tmp_path: Path) -> None:
     client = MagicMock(spec=anthropic.Anthropic)
-    client.messages.create.return_value = _message(0.75)
+    client.messages.create.return_value = _message(0.75, supported_claims=1, total_claims=2)
     judge = LLMJudge(client=client, model="claude-sonnet-5", thinking="disabled")
     preds = run_claude_live([_ex(1), _ex(2)], judge, PredictionStore(tmp_path), "live")
     assert [p.score for p in preds] == [0.75, 0.75]
     assert preds[1].input_tokens == 1000 and preds[1].output_tokens == 100
     assert preds[1].cache_read_tokens == 500
     assert preds[0].latency_s is not None
+    assert preds[0].response_id == "msg_abc123"
+    assert preds[0].supported_claims == 1 and preds[0].total_claims == 2
     assert preds[0].cost_usd == pytest.approx(
         claude_cost("claude-sonnet-5", 1000, 100, batch=False, cache_read_tokens=500)
     )

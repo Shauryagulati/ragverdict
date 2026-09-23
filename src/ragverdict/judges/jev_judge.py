@@ -44,6 +44,7 @@ class JevAnswer:
     cost_usd: float
     served_model: str
     latency_s: float
+    response_id: str = ""
 
 
 class JevJudge:
@@ -121,6 +122,7 @@ class JevJudge:
             cost_usd=answer.cost_usd,
             served_model=answer.served_model,
             latency_s=answer.latency_s,
+            response_id=answer.response_id,
         )
 
     def ask(self, state: dict[str, str], question: str) -> JevAnswer:
@@ -152,6 +154,7 @@ class JevJudge:
             cost_usd=float(usage.get("cost", 0.0) or 0.0),
             served_model=str(data.get("model", "")),
             latency_s=latency,
+            response_id=str(data.get("id", "") or ""),
         )
         with self._lock:
             self.calls += 1

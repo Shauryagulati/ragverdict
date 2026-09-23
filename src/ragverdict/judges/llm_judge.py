@@ -293,6 +293,7 @@ class LLMJudge:
         self.cache_read_tokens = 0
         self.input_tokens = 0
         self.output_tokens = 0
+        self.last_response_id = ""  # the Anthropic message id from the most recent call
 
     def faithfulness_request(self, response_text: str, retrieved_context: str) -> dict[str, Any]:
         """The exact `messages.create` kwargs for a faithfulness call (also valid batch params)."""
@@ -338,10 +339,12 @@ class LLMJudge:
         return params
 
     def _call(self, params: dict[str, Any], schema: type[T]) -> T:
+        self.last_response_id = ""
         try:
             message: Any = self._client.messages.create(**params)
         except anthropic.APIError as exc:
             raise JudgeTransportError(f"judge API call failed: {exc}") from exc
+        self.last_response_id = str(getattr(message, "id", "") or "")
         self._record_usage(getattr(message, "usage", None))
         return parse_judge_message(message, schema)
 

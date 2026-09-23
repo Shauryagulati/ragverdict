@@ -18,6 +18,7 @@ def _ok(p: float) -> httpx.Response:
     return httpx.Response(
         200,
         json={
+            "id": "gen-abc123",
             "model": "typesafe/jev-1.13-20260917",
             "answers": {"q": {"type": "noul", "noul": p}},
             "usage": {"input_tokens": 300, "output_tokens": 20, "cost": 0.0000126},
@@ -65,7 +66,14 @@ def test_inverted_question_is_reoriented_to_p_supported() -> None:
     judge = _judge(lambda r: _ok(0.9), faithfulness_question="Does it add unsupported info?",
                    question_means_unsupported=True)
     assert judge.faithfulness("r", "s").score == pytest.approx(0.1)
-    assert judge.faithfulness_answer("r", "s").p_yes == pytest.approx(0.1)
+    answer = judge.faithfulness_answer("r", "s")
+    assert answer.p_yes == pytest.approx(0.1)
+    assert answer.response_id == "gen-abc123"  # preserved through the re-orientation
+
+
+def test_response_id_from_body() -> None:
+    answer = _judge(lambda r: _ok(0.5)).ask({"a": "b"}, "q?")
+    assert answer.response_id == "gen-abc123"
 
 
 def test_boundary_probabilities() -> None:
@@ -189,3 +197,4 @@ def test_malformed_usage_type_is_ignored() -> None:
     assert answer.p_yes == pytest.approx(0.7)
     assert answer.input_tokens == 0
     assert answer.cost_usd == 0.0
+    assert answer.response_id == ""  # no "id" key in this body
