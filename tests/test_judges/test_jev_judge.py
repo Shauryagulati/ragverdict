@@ -159,3 +159,20 @@ def test_typesafe_base_url_uses_typesafe_key(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     with pytest.raises(JudgeError, match="TYPESAFE_API_KEY"):
         JevJudge(base_url="https://api.typesafe.ai", model="jev-1.13.0")
+
+
+def test_malformed_usage_type_is_ignored() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "typesafe/jev-1.13-20260917",
+                "answers": {"q": {"type": "noul", "noul": 0.7}},
+                "usage": "n/a",  # Non-dict truthy value
+            },
+        )
+
+    answer = _judge(handler).faithfulness_answer("r", "s")
+    assert answer.p_yes == pytest.approx(0.7)
+    assert answer.input_tokens == 0
+    assert answer.cost_usd == 0.0

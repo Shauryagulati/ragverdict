@@ -133,7 +133,9 @@ class JevJudge:
             raise JudgeError(f"jev returned an unexpected response shape: {str(data)[:200]}") from exc
         if not 0.0 <= p <= 1.0:
             raise JudgeError(f"jev returned probability out of range: {p}")
-        usage = data.get("usage") or {}
+        usage = data.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
         answer = JevAnswer(
             p_yes=p,
             input_tokens=int(usage.get("input_tokens", 0) or 0),
