@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 def _dataset(root: Path) -> None:
     sources = [{"source_id": "s", "task_type": "QA", "source": "x", "source_info": {}, "prompt": "p"}]
     rows = []
-    for i in range(12):
+    for i in range(14):
         labels = [{"start": 0, "end": 1, "text": "2022", "meta": "", "label_type": "Evident Conflict",
                    "implicit_true": False, "due_to_null": False}] if i % 3 == 0 else []
         rows.append({"id": str(i), "source_id": "s", "model": "m", "temperature": 0.7, "split": "test",
@@ -33,11 +33,16 @@ def test_verifier_matches_summary(tmp_path: Path) -> None:
     _dataset(data)
     out = tmp_path / "out"
     store = PredictionStore(out)
-    for i in range(12):
+    for i in range(14):
         hallucinated = i % 3 == 0
+        if i == 12:
+            jev_score = 0.5  # exactly the frozen jev_threshold: exercises the `<` boundary
+        elif i == 13:
+            jev_score = 0.0  # 1 - score == 1.0 exactly: exercises the ECE last-bin boundary
+        else:
+            jev_score = (0.2 + 0.01 * i) if hallucinated else (0.6 + 0.02 * i)
         store.append(Prediction(run="jev", example_id=str(i), repeat=0,
-                                score=(0.2 + 0.01 * i) if hallucinated else (0.6 + 0.02 * i),
-                                cost_usd=0.00005))
+                                score=jev_score, cost_usd=0.00005))
         store.append(Prediction(run="claude", example_id=str(i), repeat=0,
                                 score=0.5 if (hallucinated or i == 1) else 1.0, cost_usd=0.002))
     frozen_path = REPO / "bench" / "frozen_config.json"
