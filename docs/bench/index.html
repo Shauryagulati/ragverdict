@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev vs Claude Sonnet 5 — RAGTruth benchmark</title>
+<meta name="description" content="Results explorer: Jev, Claude Sonnet 5, DeepSeek Flash, GLM Flash and a Jev-to-Claude cascade judging RAGTruth's human-labeled RAG hallucinations.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #5b6472;
+    --border: #d8dce1;
+    --accent: #2555a4;
+    --card-bg: #f7f8fa;
+    --mark-bg: #fde68a;
+    --mark-fg: #1a1a1a;
+    --good: #146c43;
+    --bad: #b3261e;
+    --neutral: #5b6472;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a;
+      --fg: #e6e8eb;
+      --muted: #9aa3ad;
+      --border: #2c323b;
+      --accent: #7fb0ff;
+      --card-bg: #191d23;
+      --mark-bg: #6b4e0a;
+      --mark-fg: #ffe8a3;
+      --good: #4ad393;
+      --bad: #ff8a80;
+      --neutral: #9aa3ad;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #5b6472; --border: #d8dce1; --accent: #2555a4;
+    --card-bg: #f7f8fa; --mark-bg: #fde68a; --mark-fg: #1a1a1a; --good: #146c43; --bad: #b3261e;
+    --neutral: #5b6472;
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151a; --fg: #e6e8eb; --muted: #9aa3ad; --border: #2c323b; --accent: #7fb0ff;
+    --card-bg: #191d23; --mark-bg: #6b4e0a; --mark-fg: #ffe8a3; --good: #4ad393; --bad: #ff8a80;
+    --neutral: #9aa3ad;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0 16px 64px;
+  }
+  main { max-width: 920px; margin: 0 auto; }
+  header.page-header {
+    max-width: 920px;
+    margin: 0 auto;
+    padding-top: 32px;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; margin: 40px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  h3 { font-size: 1rem; margin: 20px 0 8px; }
+  h4 { font-size: 0.85rem; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  p { margin: 0 0 10px; }
+  a { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin: 0 0 12px; }
+  .links { font-size: 0.9rem; margin-bottom: 4px; }
+  .links a { margin-right: 16px; }
+  .note {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-style: italic;
+  }
+  .status-banner {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    margin: 16px 0;
+  }
+  .status-banner.error { border-color: var(--bad); color: var(--bad); }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 0.87rem; margin: 8px 0 4px; }
+  table.data caption { text-align: left; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  table.data th, table.data td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  table.data thead th { background: var(--card-bg); font-weight: 600; }
+  table.data tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card-bg) 55%, transparent); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 640px) {
+    table.responsive thead { position: absolute; left: -9999px; top: -9999px; }
+    table.responsive, table.responsive tbody, table.responsive tr, table.responsive td { display: block; width: 100%; }
+    table.responsive tr { border: 1px solid var(--border); margin-bottom: 8px; border-radius: 4px; overflow: hidden; }
+    table.responsive td { border: none; border-bottom: 1px solid var(--border); padding-left: 46%; position: relative; text-align: right; min-height: 1.6em; }
+    table.responsive td:last-child { border-bottom: none; }
+    table.responsive td::before {
+      content: attr(data-label);
+      position: absolute; left: 8px; top: 6px; width: 42%;
+      font-weight: 600; text-align: left; color: var(--muted); white-space: normal;
+    }
+  }
+
+  .verdict-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0 20px; }
+  .verdict-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    padding: 12px 14px;
+    flex: 1 1 320px;
+  }
+  .verdict-card h3 { margin-top: 0; }
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+  }
+  .badge.good { color: var(--good); }
+  .badge.bad { color: var(--bad); }
+  .badge.neutral { color: var(--neutral); }
+  .verdict-detail { font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
+
+  figure.chart { margin: 0 0 24px; }
+  figure.chart img { max-width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 4px; }
+  figure.chart figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px 24px; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin: 12px 0 16px; }
+  .filter-field { display: flex; flex-direction: column; gap: 4px; }
+  .filter-field label { font-size: 0.78rem; color: var(--muted); }
+  .filter-field select {
+    font: inherit;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+  }
+  #case-count { font-size: 0.85rem; color: var(--muted); margin: 0 0 12px; }
+
+  .case-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    background: var(--card-bg);
+  }
+  .case-card-header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .case-id { font-weight: 700; font-size: 0.9rem; }
+  .tag {
+    font-size: 0.72rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 7px;
+    color: var(--muted);
+  }
+  dl.case-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 16px; margin: 8px 0; font-size: 0.85rem; }
+  dl.case-stats dt { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
+  dl.case-stats dd { margin: 0; }
+  .case-card p.body-text { font-size: 0.9rem; white-space: pre-wrap; word-wrap: break-word; border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; background: var(--bg); }
+  mark { background: var(--mark-bg); color: var(--mark-fg); border-radius: 2px; padding: 0 1px; }
+  details.source-details { margin-top: 8px; }
+  details.source-details summary { cursor: pointer; font-size: 0.82rem; color: var(--accent); }
+  details.source-details p.body-text { margin-top: 6px; }
+
+  .audit-entry {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: var(--card-bg);
+    font-size: 0.87rem;
+  }
+  .audit-entry dt { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+  .audit-entry dd { margin: 0 0 8px; }
+
+  footer.page-footer { max-width: 920px; margin: 48px auto 0; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); padding-top: 12px; }
+</style>
+</head>
+<body>
+<header class="page-header">
+  <h1>Jev vs Claude Sonnet 5 on RAGTruth</h1>
+  <p class="subtitle">Does a lightweight classifier judge RAG hallucinations as well as a frontier LLM judge — and can a Jev&rarr;Claude cascade match the frontier judge at a fraction of the cost?</p>
+  <p class="links">
+    <a href="../jev-ragtruth-benchmark.md">Read the write-up</a>
+    <a href="https://github.com/Shauryagulati/ragverdict">ragverdict on GitHub</a>
+  </p>
+</header>
+
+<main>
+  <div id="load-status" class="status-banner" hidden></div>
+
+  <section id="headline-section" aria-labelledby="headline-heading">
+    <h2 id="headline-heading">Headline results</h2>
+    <p id="headline-context" class="note"></p>
+    <div id="headline-table-wrap"></div>
+
+    <div id="verdicts" class="verdict-row"></div>
+  </section>
+
+  <section id="sensitivity-section" aria-labelledby="sensitivity-heading">
+    <h2 id="sensitivity-heading">Sensitivity analyses</h2>
+    <h3>Excluding convention-dependent labels</h3>
+    <div id="sensitivity-excl-wrap"></div>
+    <h3>Unscored responses counted as wrong</h3>
+    <div id="sensitivity-invalid-wrap"></div>
+  </section>
+
+  <section id="pilot-section" aria-labelledby="pilot-heading">
+    <h2 id="pilot-heading">Pilot replication (QA)</h2>
+    <p class="note">Response-level accuracy/macro-F1 on the QA-900 cohort, under the cited pilot's own rules (no quality filter; hallucinated = any labeled span, including implicit-true).</p>
+    <h3>This run</h3>
+    <div id="pilot-this-run-wrap"></div>
+    <h3>Cited pilot reference</h3>
+    <div id="pilot-reference-wrap"></div>
+  </section>
+
+  <section id="charts-section" aria-labelledby="charts-heading">
+    <h2 id="charts-heading">Charts</h2>
+    <div class="chart-grid" id="chart-grid">
+      <figure class="chart" data-src="f1_vs_cost.png">
+        <img alt="F1 vs cost per 1,000 judgments, log-scaled cost axis, for each judge and the cascade.">
+        <figcaption>F1 vs cost per 1,000 judgments.</figcaption>
+      </figure>
+      <figure class="chart" data-src="reliability.png">
+        <img alt="Reliability diagram: Jev's predicted hallucination probability against the observed rate.">
+        <figcaption>Calibration (reliability diagram).</figcaption>
+      </figure>
+      <figure class="chart" data-src="cascade_curve.png">
+        <img alt="Cascade F1 and cost as the escalation-to-Claude rate increases.">
+        <figcaption>Jev-first, Claude-when-unsure cascade sweep.</figcaption>
+      </figure>
+      <figure class="chart" data-src="slices.png">
+        <img alt="AUROC by task type for Jev and Claude.">
+        <figcaption>AUROC by task type.</figcaption>
+      </figure>
+      <figure class="chart" data-src="pr_curve.png">
+        <img alt="Jev's precision-recall curve with each LLM judge's operating point marked.">
+        <figcaption>Precision/recall curve with LLM operating points.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="cases-section" aria-labelledby="cases-heading">
+    <h2 id="cases-heading">Case explorer</h2>
+    <p class="note">Cases where untuned Jev and Claude disagree, or where both are wrong against the human label.</p>
+    <div class="filters">
+      <div class="filter-field">
+        <label for="filter-task">Task</label>
+        <select id="filter-task">
+          <option value="all">All tasks</option>
+          <option value="QA">QA</option>
+          <option value="Summary">Summary</option>
+          <option value="Data2txt">Data2txt</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="filter-view">View</label>
+        <select id="filter-view">
+          <option value="all">All (disagreements + joint errors)</option>
+          <option value="jev-right">Jev right, Claude wrong</option>
+          <option value="claude-right">Claude right, Jev wrong</option>
+          <option value="both-wrong">Both wrong</option>
+        </select>
+      </div>
+    </div>
+    <p id="case-count" role="status"></p>
+    <div id="case-list"></div>
+  </section>
+
+  <section id="audit-section" aria-labelledby="audit-heading">
+    <h2 id="audit-heading">Label audit</h2>
+    <div id="audit-content"></div>
+  </section>
+</main>
+
+<footer class="page-footer">
+  <p>Every number on this page is read from <code>data/results.json</code>, written by <code>ragverdict.bench.page.export</code>. Nothing here is computed client-side beyond filtering the case list.</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  function ce(tag, attrs, children) {
+    var el = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (k === "class") el.className = attrs[k];
+        else if (k === "for") el.setAttribute("for", attrs[k]);
+        else el.setAttribute(k, attrs[k]);
+      });
+    }
+    (children || []).forEach(function (c) {
+      if (c === null || c === undefined) return;
+      el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return el;
+  }
+
+  function textEl(tag, text, attrs) {
+    var el = ce(tag, attrs, []);
+    el.textContent = text;
+    return el;
+  }
+
+  function isNil(v) { return v === null || v === undefined; }
+
+  function na(text) {
+    return textEl("span", text || "not available", { class: "note" });
+  }
+
+  function fmt(x, digits) {
+    if (isNil(x)) return "—";
+    var n = Number(x);
+    if (Number.isNaN(n)) return "—";
+    return n.toFixed(digits === undefined ? 3 : digits);
+  }
+
+  function fmtInt(x) {
+    if (isNil(x)) return "—";
+    return String(x);
+  }
+
+  function fmtCost(x) {
+    if (isNil(x)) return "—";
+    return "$" + Number(x).toFixed(4);
+  }
+
+  function fmtCI(block, digits) {
+    // block: {value, ci95 | ci90} or null
+    if (isNil(block) || isNil(block.value)) return "—";
+    var ci = block.ci95 || block.ci90;
+    var v = fmt(block.value, digits);
+    if (!ci || isNil(ci[0]) || isNil(ci[1])) return v;
+    return v + " [" + fmt(ci[0], digits) + ", " + fmt(ci[1], digits) + "]";
+  }
+
+  function fmtPair(lo, hi, digits) {
+    if (isNil(lo) || isNil(hi)) return "—";
+    return "[" + fmt(lo, digits) + ", " + fmt(hi, digits) + "]";
+  }
+
+  var JUDGE_LABELS = {
+    jev_untuned: "Jev (untuned)",
+    jev_tuned: "Jev (tuned on train)",
+    jev: "Jev",
+    jev_pilot_setting: "Jev (pilot wording @ 0.5)",
+    jev_pilot_state: "Jev (pilot state keys)",
+    claude: "Claude Sonnet 5",
+    deepseek: "DeepSeek Flash",
+    deepseek_pilot: "DeepSeek Flash (pilot prompt)",
+    glm: "GLM Flash",
+    glm_pilot: "GLM Flash (pilot prompt)",
+    jev_tuned_single: "Jev (tuned, single-judge)",
+    jev_untuned_single: "Jev (untuned, single-judge)"
+  };
+  function judgeLabel(key) { return JUDGE_LABELS[key] || key; }
+
+  // ---------- responsive table builder ----------
+  function buildTable(caption, headers, rows) {
+    // rows: array of arrays of (string | Node)
+    var table = ce("table", { class: "data responsive" }, []);
+    if (caption) table.appendChild(textEl("caption", caption));
+    var thead = ce("thead", null, []);
+    var htr = ce("tr", null, []);
+    headers.forEach(function (h) { htr.appendChild(textEl("th", h, { scope: "col" })); });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+    var tbody = ce("tbody", null, []);
+    rows.forEach(function (row) {
+      var tr = ce("tr", null, []);
+      row.forEach(function (cell, i) {
+        var td = ce("td", { "data-label": headers[i] }, []);
+        if (cell instanceof Node) td.appendChild(cell);
+        else td.textContent = cell === undefined || cell === null ? "—" : String(cell);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  // ---------- headline ----------
+  function renderHeadline(data) {
+    var wrap = document.getElementById("headline-table-wrap");
+    var ctx = document.getElementById("headline-context");
+    var headline = data.headline;
+    if (!headline || !headline.judges || Object.keys(headline.judges).length === 0) {
+      wrap.appendChild(na("Headline table not available yet (no common cohort across judges)."));
+      ctx.textContent = "";
+      return;
+    }
+    ctx.textContent = headline.is_headline
+      ? "Untuned comparison on the common cohort scored by every judge (n = " + fmtInt(headline.cohort_n) + ")."
+      : "Partial run: each judge shown on its own cohort (no common intersection across judges yet, n_test = " + fmtInt(headline.cohort_n) + ").";
+
+    var order = ["jev_untuned", "jev_tuned", "claude", "deepseek", "glm"];
+    var rows = [];
+    order.forEach(function (key) {
+      var b = headline.judges[key];
+      if (!b) return;
+      rows.push([
+        judgeLabel(key),
+        fmtInt(b.n),
+        fmtCI(b.f1),
+        fmtCI(b.auroc),
+        fmtCost(b.cost_usd_per_1k)
+      ]);
+    });
+    // any keys not in the known order, appended after
+    Object.keys(headline.judges).forEach(function (key) {
+      if (order.indexOf(key) === -1) {
+        var b = headline.judges[key];
+        rows.push([judgeLabel(key), fmtInt(b.n), fmtCI(b.f1), fmtCI(b.auroc), fmtCost(b.cost_usd_per_1k)]);
+      }
+    });
+    if (headline.cascade) {
+      var c = headline.cascade;
+      rows.push([
+        "Cascade (Jev → Claude)",
+        "—",
+        fmt(c.f1) + " (point estimate)",
+        "—",
+        fmtCost(c.cost_usd_per_1k)
+      ]);
+    }
+    wrap.appendChild(buildTable(
+      "Untuned headline: response-level F1 and AUROC with 95% bootstrap CIs, cost per 1,000 judgments.",
+      ["Judge", "n", "F1 (95% CI)", "AUROC (95% CI)", "Cost / 1k"],
+      rows
+    ));
+  }
+
+  // ---------- H1 / H9 verdict cards ----------
+  var VERDICT_STYLE = {
+    equivalent: "good", jev_better: "good", jev_worse: "bad", inconclusive: "neutral",
+    confirmed: "good", refuted: "bad"
+  };
+  function verdictBadge(v) {
+    if (!v) return na();
+    return textEl("span", v.replace(/_/g, " "), { class: "badge " + (VERDICT_STYLE[v] || "neutral") });
+  }
+
+  function renderVerdicts(data) {
+    var wrap = document.getElementById("verdicts");
+    var hyp = data.hypotheses || {};
+
+    var h1 = hyp.H1;
+    var h1card = ce("div", { class: "verdict-card" }, [
+      textEl("h3", "H1 — Jev (untuned) vs Claude, F1 equivalence")
+    ]);
+    if (h1) {
+      h1card.appendChild(verdictBadge(h1.verdict));
+      h1card.appendChild(ce("p", { class: "verdict-detail" }, [
+        "diff (Jev − Claude) = " + fmt(h1.diff) + ", 90% CI " + fmtPair(h1.ci90 && h1.ci90[0], h1.ci90 && h1.ci90[1]) +
+        ", equivalence margin ±" + fmt(h1.delta) + ", n=" + fmtInt(h1.n)
+      ]));
+    } else {
+      h1card.appendChild(na("H1 not available."));
+    }
+    wrap.appendChild(h1card);
+
+    var h9 = hyp.H9;
+    var h9card = ce("div", { class: "verdict-card" }, [
+      textEl("h3", "H9 — cascade vs best single judge")
+    ]);
+    if (h9) {
+      h9card.appendChild(verdictBadge(h9.verdict));
+      var bestName = h9.best_single_judge ? judgeLabel(h9.best_single_judge) : "—";
+      var bestF1 = h9.single_judge_f1 && h9.best_single_judge ? h9.single_judge_f1[h9.best_single_judge] : null;
+      h9card.appendChild(ce("p", { class: "verdict-detail" }, [
+        "cascade F1 = " + fmt(h9.cascade_f1) + " vs best single (" + bestName + ") F1 = " + fmt(bestF1) +
+        "; diff = " + fmt(h9.diff) + ", 95% CI " + fmtPair(h9.ci95 && h9.ci95[0], h9.ci95 && h9.ci95[1]) +
+        "; predicted gain < " + fmt(h9.margin) + "; escalation rate = " + fmt(h9.escalation_rate, 3) +
+        "; n=" + fmtInt(h9.n)
+      ]));
+    } else {
+      h9card.appendChild(na("H9 not available."));
+    }
+    wrap.appendChild(h9card);
+  }
+
+  // ---------- sensitivity ----------
+  function renderSensitivity(data) {
+    var sens = data.sensitivity || {};
+    var exclWrap = document.getElementById("sensitivity-excl-wrap");
+    var excl = sens.excluding_convention_dependent;
+    if (!excl) {
+      exclWrap.appendChild(na("Not available."));
+    } else {
+      exclWrap.appendChild(ce("p", { class: "note" }, [
+        "n=" + fmtInt(excl.n) + " after dropping " + fmtInt(excl.n_dropped) + " convention-dependent labels."
+      ]));
+      var order = ["jev_untuned", "jev_tuned", "claude", "deepseek", "glm"];
+      var rows = [];
+      (excl.judges ? Object.keys(excl.judges) : []).sort(function (a, b) {
+        var ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia === -1) ia = 999; if (ib === -1) ib = 999;
+        return ia - ib;
+      }).forEach(function (key) {
+        var b = excl.judges[key];
+        rows.push([judgeLabel(key), fmtInt(b.n), fmtCI(b.f1), fmtCI(b.macro_f1)]);
+      });
+      if (rows.length) {
+        exclWrap.appendChild(buildTable(null, ["Judge", "n", "F1 (95% CI)", "Macro-F1 (95% CI)"], rows));
+      } else {
+        exclWrap.appendChild(na("No judge rows available."));
+      }
+      if (excl.h1) {
+        exclWrap.appendChild(ce("p", { class: "verdict-detail" }, [
+          "H1 restated: ", verdictBadge(excl.h1.verdict),
+          " diff = " + fmt(excl.h1.diff) + ", 90% CI " + fmtPair(excl.h1.ci90 && excl.h1.ci90[0], excl.h1.ci90 && excl.h1.ci90[1])
+        ]));
+      }
+    }
+
+    var invWrap = document.getElementById("sensitivity-invalid-wrap");
+    var inv = sens.invalid_as_wrong;
+    if (!inv || Object.keys(inv).length === 0) {
+      invWrap.appendChild(na("Not available."));
+      return;
+    }
+    var invOrder = ["jev_untuned", "jev", "claude", "deepseek", "glm"];
+    var invRows = [];
+    Object.keys(inv).sort(function (a, b) {
+      var ia = invOrder.indexOf(a), ib = invOrder.indexOf(b);
+      if (ia === -1) ia = 999; if (ib === -1) ib = 999;
+      return ia - ib;
+    }).forEach(function (key) {
+      var b = inv[key];
+      var failed = b.n_failed_by_kind || {};
+      invRows.push([
+        judgeLabel(key), fmtInt(b.n), fmtInt(b.n_invalid),
+        fmtInt(b.n_failed) + " (transport " + fmtInt(failed.transport) + ", judge " + fmtInt(failed.judge) + ", unknown " + fmtInt(failed.unknown) + ")",
+        fmtInt(b.n_missing),
+        fmtCI(b.f1), fmtCI(b.macro_f1)
+      ]);
+    });
+    invWrap.appendChild(buildTable(
+      "Every example a judge failed to score (or never scored) counts as the wrong verdict.",
+      ["Judge", "n", "Invalid", "Failed", "Missing", "F1 (95% CI)", "Macro-F1 (95% CI)"],
+      invRows
+    ));
+  }
+
+  // ---------- pilot replication ----------
+  var PILOT_ROW_ORDER = ["jev", "jev_pilot_setting", "jev_pilot_state", "claude", "deepseek", "deepseek_pilot", "glm", "glm_pilot"];
+  function renderPilot(data) {
+    var thisRunWrap = document.getElementById("pilot-this-run-wrap");
+    var refWrap = document.getElementById("pilot-reference-wrap");
+    var run = data.qa_replication_pilot_rules;
+    var ref = data.pilot_reference_qa;
+
+    if (!run) {
+      thisRunWrap.appendChild(na("Not available."));
+    } else {
+      thisRunWrap.appendChild(ce("p", { class: "note" }, [
+        "QA cohort n=" + fmtInt(run.n) + ", positives (any span)=" + fmtInt(run.n_positive) + "."
+      ]));
+      var rows = [];
+      PILOT_ROW_ORDER.forEach(function (key) {
+        var b = run[key];
+        if (!b) return;
+        var extra = key === "jev" && !isNil(b.paraphrase)
+          ? " (wording " + b.paraphrase + " @ " + fmt(b.threshold, 2) + ")" : "";
+        rows.push([
+          judgeLabel(key) + extra, fmtInt(b.n_scored), fmt(b.accuracy), fmt(b.macro_f1),
+          fmtInt(b.missed), fmtInt(b.false_alarms)
+        ]);
+      });
+      if (rows.length) {
+        thisRunWrap.appendChild(buildTable(null, ["Judge", "n scored", "Accuracy", "Macro-F1", "Missed", "False alarms"], rows));
+      } else {
+        thisRunWrap.appendChild(na("No pilot-rule rows scored yet."));
+      }
+    }
+
+    if (!ref) {
+      refWrap.appendChild(na("Not available."));
+    } else {
+      var refRows = Object.keys(ref).map(function (key) {
+        var b = ref[key];
+        return [key, fmt(b.accuracy), fmt(b.macro_f1), fmtInt(b.missed), fmtInt(b.false_alarms)];
+      });
+      refWrap.appendChild(ce("p", { class: "note" }, [
+        "slavadubrov/sgr-judge-bench @ 5e142707, results/pilot/README.md (2026-09-19): RAGTruth QA test, 900 responses (740 clean / 160 hallucinated). Cited, not re-run."
+      ]));
+      refWrap.appendChild(buildTable(null, ["Judge", "Accuracy", "Macro-F1", "Missed", "False alarms"], refRows));
+    }
+  }
+
+  // ---------- charts ----------
+  function renderCharts() {
+    document.querySelectorAll("#chart-grid figure").forEach(function (fig) {
+      var img = fig.querySelector("img");
+      var src = fig.getAttribute("data-src");
+      img.addEventListener("error", function () { fig.hidden = true; }, { once: true });
+      img.src = src;
+    });
+  }
+
+  // ---------- case explorer ----------
+  function highlightChunks(text, spans) {
+    var intervals = [];
+    (spans || []).forEach(function (s) {
+      if (!s) return;
+      var idx = 0, pos;
+      while ((pos = text.indexOf(s, idx)) !== -1) {
+        intervals.push([pos, pos + s.length]);
+        idx = pos + s.length;
+      }
+    });
+    if (!intervals.length) return [{ text: text, mark: false }];
+    intervals.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [];
+    intervals.forEach(function (iv) {
+      var last = merged[merged.length - 1];
+      if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]);
+      else merged.push([iv[0], iv[1]]);
+    });
+    var chunks = [], pos2 = 0;
+    merged.forEach(function (iv) {
+      if (iv[0] > pos2) chunks.push({ text: text.slice(pos2, iv[0]), mark: false });
+      chunks.push({ text: text.slice(iv[0], iv[1]), mark: true });
+      pos2 = iv[1];
+    });
+    if (pos2 < text.length) chunks.push({ text: text.slice(pos2), mark: false });
+    return chunks;
+  }
+
+  function buildHighlightedParagraph(text, spans) {
+    var p = ce("p", { class: "body-text" }, []);
+    highlightChunks(text || "", spans).forEach(function (chunk) {
+      if (chunk.mark) {
+        var m = ce("mark", null, []);
+        m.textContent = chunk.text;
+        p.appendChild(m);
+      } else {
+        p.appendChild(document.createTextNode(chunk.text));
+      }
+    });
+    return p;
+  }
+
+  function caseMatchesView(c, view) {
+    var jevCorrect = c.jev_verdict === c.label;
+    var claudeCorrect = c.claude_verdict === c.label;
+    if (view === "jev-right") return jevCorrect && !claudeCorrect;
+    if (view === "claude-right") return !jevCorrect && claudeCorrect;
+    if (view === "both-wrong") return !jevCorrect && !claudeCorrect;
+    return true;
+  }
+
+  function buildCaseCard(c) {
+    var header = ce("div", { class: "case-card-header" }, [
+      textEl("span", "#" + c.id, { class: "case-id" }),
+      textEl("span", c.task, { class: "tag" }),
+      textEl("span", c.generator, { class: "tag" }),
+      textEl("span", c.label ? "human label: hallucinated" : "human label: clean", { class: "tag" })
+    ]);
+    if (c.severity) header.appendChild(textEl("span", "severity: " + c.severity, { class: "tag" }));
+
+    var jevVerdictText = isNil(c.jev_verdict) ? "—" : (c.jev_verdict ? "hallucinated" : "clean");
+    var claudeVerdictText = isNil(c.claude_verdict) ? "—" : (c.claude_verdict ? "hallucinated" : "clean");
+    var stats = ce("dl", { class: "case-stats" }, [
+      ce("div", null, [textEl("dt", "Jev P(supported)"), textEl("dd", fmt(c.jev_p) + " (verdict: " + jevVerdictText + ")")]),
+      ce("div", null, [textEl("dt", "Claude score"), textEl("dd", fmt(c.claude_score) + " (verdict: " + claudeVerdictText + ")")])
+    ]);
+
+    var card = ce("article", { class: "case-card" }, [header, stats]);
+
+    if (c.claude_reasoning) {
+      card.appendChild(textEl("h4", "Claude's reasoning"));
+      card.appendChild(textEl("p", c.claude_reasoning, { class: "body-text" }));
+    }
+
+    card.appendChild(textEl("h4", "Response (hallucinated spans highlighted)"));
+    card.appendChild(buildHighlightedParagraph(c.response, c.span_texts));
+
+    var details = ce("details", { class: "source-details" }, [textEl("summary", "Source")]);
+    details.appendChild(textEl("p", c.source || "", { class: "body-text" }));
+    card.appendChild(details);
+
+    return card;
+  }
+
+  function renderCases(data) {
+    var cases = data.cases || [];
+    var taskSel = document.getElementById("filter-task");
+    var viewSel = document.getElementById("filter-view");
+    var list = document.getElementById("case-list");
+    var count = document.getElementById("case-count");
+
+    function redraw() {
+      var task = taskSel.value;
+      var view = viewSel.value;
+      var filtered = cases.filter(function (c) {
+        return (task === "all" || c.task === task) && caseMatchesView(c, view);
+      });
+      count.textContent = "Showing " + filtered.length + " of " + cases.length + " cases.";
+      while (list.firstChild) list.removeChild(list.firstChild);
+      if (!filtered.length) {
+        list.appendChild(na("No cases match this filter."));
+        return;
+      }
+      filtered.forEach(function (c) { list.appendChild(buildCaseCard(c)); });
+    }
+
+    taskSel.addEventListener("change", redraw);
+    viewSel.addEventListener("change", redraw);
+    redraw();
+  }
+
+  // ---------- label audit ----------
+  function renderAudit(data) {
+    var wrap = document.getElementById("audit-content");
+    var audit = data.audit;
+    if (!audit || !audit.length) {
+      wrap.appendChild(na("Label audit not run."));
+      return;
+    }
+    audit.forEach(function (entry) {
+      var dl = ce("dl", null, []);
+      var fieldOrder = ["id", "verdict", "evidence", "quote", "notes", "source", "response"];
+      var shown = {};
+      fieldOrder.forEach(function (key) {
+        if (entry[key] === undefined) return;
+        shown[key] = true;
+        dl.appendChild(textEl("dt", key));
+        dl.appendChild(textEl("dd", String(entry[key])));
+      });
+      Object.keys(entry).forEach(function (key) {
+        if (shown[key]) return;
+        dl.appendChild(textEl("dt", key));
+        dl.appendChild(textEl("dd", String(entry[key])));
+      });
+      wrap.appendChild(ce("div", { class: "audit-entry" }, [dl]));
+    });
+  }
+
+  // ---------- boot ----------
+  function showError(msg) {
+    var banner = document.getElementById("load-status");
+    banner.hidden = false;
+    banner.className = "status-banner error";
+    banner.textContent = msg;
+  }
+
+  fetch("data/results.json")
+    .then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    })
+    .then(function (data) {
+      renderHeadline(data);
+      renderVerdicts(data);
+      renderSensitivity(data);
+      renderPilot(data);
+      renderCharts();
+      renderCases(data);
+      renderAudit(data);
+    })
+    .catch(function (err) {
+      showError("Could not load data/results.json (" + err.message + "). Run `ragverdict bench ragtruth report` to generate it.");
+    });
+})();
+</script>
+</body>
+</html>
