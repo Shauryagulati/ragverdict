@@ -40,3 +40,6 @@ INTERVIEW_PREP.md
 NOTES.md
 RESUME_POINTERS.md
 _private/
+
+# Benchmark outputs (raw predictions are published under docs/bench/data, not here)
+bench_results/
