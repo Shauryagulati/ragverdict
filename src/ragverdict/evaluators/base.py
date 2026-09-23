@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from ragverdict.adapters.base import RagAdapter
     from ragverdict.config import TestSpec, Thresholds
-    from ragverdict.judges.llm_judge import LLMJudge
+    from ragverdict.judges.base import Judge
 
 
 class Verdict(str, Enum):
@@ -42,6 +42,6 @@ class Evaluator(ABC):
         adapter: RagAdapter,
         spec: TestSpec,
         *,
-        judge: LLMJudge | None,
+        judge: Judge | None,
         thresholds: Thresholds,
     ) -> TestResult: ...

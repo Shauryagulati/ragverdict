@@ -32,7 +32,7 @@ from ragverdict.evaluators.base import Evaluator, TestResult, Verdict
 if TYPE_CHECKING:
     from ragverdict.adapters.base import RagAdapter
     from ragverdict.config import TestSpec, Thresholds
-    from ragverdict.judges.llm_judge import LLMJudge
+    from ragverdict.judges.base import Judge
 
 
 # --- Pydantic case models -------------------------------------------------
@@ -149,7 +149,7 @@ class EdgeCasesEvaluator(Evaluator):
         adapter: RagAdapter,
         spec: TestSpec,
         *,
-        judge: LLMJudge | None,
+        judge: Judge | None,
         thresholds: Thresholds,
     ) -> TestResult:
         t0 = time.perf_counter()
@@ -323,7 +323,7 @@ def _run_multi_turn(case: MultiTurnCase, adapter: RagAdapter) -> CaseOutcome:
 def _run_contradiction(
     case: ContradictionCase,
     adapter: RagAdapter,
-    judge: LLMJudge | None,
+    judge: Judge | None,
 ) -> CaseOutcome:
     """Send a query with a false premise; PASS iff the agent pushes back.
 

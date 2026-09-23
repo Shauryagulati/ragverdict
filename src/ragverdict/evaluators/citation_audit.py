@@ -25,7 +25,7 @@ from ragverdict.evaluators.base import Evaluator, TestResult, Verdict
 if TYPE_CHECKING:
     from ragverdict.adapters.base import RagAdapter, SourceDoc
     from ragverdict.config import TestSpec, Thresholds
-    from ragverdict.judges.llm_judge import LLMJudge
+    from ragverdict.judges.base import Judge
 
 
 class CitationAuditSpec(BaseModel):
@@ -45,7 +45,7 @@ class CitationAuditEvaluator(Evaluator):
         adapter: RagAdapter,
         spec: TestSpec,
         *,
-        judge: LLMJudge | None,
+        judge: Judge | None,
         thresholds: Thresholds,
     ) -> TestResult:
         t0 = time.perf_counter()

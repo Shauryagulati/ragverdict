@@ -11,7 +11,8 @@ from ragverdict.adapters.loader import load_adapter
 from ragverdict.config import Config, load_config
 from ragverdict.evaluators import EVALUATORS
 from ragverdict.evaluators.base import TestResult, Verdict
-from ragverdict.judges.llm_judge import JudgeError, LLMJudge
+from ragverdict.judges.base import Judge, JudgeError
+from ragverdict.judges.llm_judge import LLMJudge
 
 # Sentinel for "auto-init the judge from config" (vs. None which means "no judge").
 _AUTO: Literal["auto"] = "auto"
@@ -27,11 +28,11 @@ class Runner:
         config: Config,
         out_dir: Path,
         *,
-        judge: LLMJudge | None | Literal["auto"] = "auto",
+        judge: Judge | None | Literal["auto"] = "auto",
     ) -> None:
         self.config = config
         self.out_dir = out_dir
-        self.judge: LLMJudge | None = (
+        self.judge: Judge | None = (
             self._maybe_init_judge() if judge == _AUTO else judge
         )
 
@@ -41,7 +42,7 @@ class Runner:
         config_path: Path,
         out_dir: Path,
         *,
-        judge: LLMJudge | None | Literal["auto"] = "auto",
+        judge: Judge | None | Literal["auto"] = "auto",
     ) -> Runner:
         return cls(load_config(config_path), out_dir, judge=judge)
 
@@ -82,7 +83,7 @@ class Runner:
             reporter.on_result(result)
 
         _, exit_code = reporter.finalize(results)
-        if self.judge is not None and (
+        if isinstance(self.judge, LLMJudge) and (
             self.judge.cache_read_tokens or self.judge.cache_creation_tokens
         ):
             reporter.console.print(
@@ -92,7 +93,7 @@ class Runner:
             )
         return results, exit_code
 
-    def _maybe_init_judge(self) -> LLMJudge | None:
+    def _maybe_init_judge(self) -> Judge | None:
         """Best-effort judge instantiation. Returns None if no API key is set."""
         if self.config.judge.provider != "anthropic":
             return None

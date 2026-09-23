@@ -25,48 +25,13 @@ import os
 from typing import Any, TypeVar
 
 import anthropic
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
+
+from ragverdict.judges.base import JudgeError, JudgeScore, PushbackVerdict, RefusalVerdict
+
+__all__ = ["JudgeError", "JudgeScore", "LLMJudge", "PushbackVerdict", "RefusalVerdict"]
 
 T = TypeVar("T", bound=BaseModel)
-
-
-class JudgeError(Exception):
-    """Raised when a judge call cannot produce a valid score."""
-
-
-class JudgeScore(BaseModel):
-    """Score for one quality dimension (faithfulness or relevance)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    score: float = Field(ge=0.0, le=1.0)
-    reasoning: str
-    supported_claims: int = 0
-    total_claims: int = 0
-
-
-class RefusalVerdict(BaseModel):
-    """Did the response explicitly decline to answer?"""
-
-    model_config = ConfigDict(extra="ignore")
-
-    is_refusal: bool
-    reasoning: str
-
-
-class PushbackVerdict(BaseModel):
-    """Did the response correctly push back on a false premise?
-
-    Pushback ≠ refusal. The agent can correct the premise while still
-    answering ("Actually, Acme acquired XYZ in 2018, and the rationale
-    was…"). What we're grading is whether the false claim was
-    challenged, not whether the agent declined to engage.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    handled_correctly: bool
-    reasoning: str
 
 
 _FAITHFULNESS_SYSTEM = """\

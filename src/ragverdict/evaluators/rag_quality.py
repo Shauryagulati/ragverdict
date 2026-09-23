@@ -24,7 +24,7 @@ from ragverdict.evaluators.base import Evaluator, TestResult, Verdict
 if TYPE_CHECKING:
     from ragverdict.adapters.base import RagAdapter, RagResponse
     from ragverdict.config import TestSpec, Thresholds
-    from ragverdict.judges.llm_judge import JudgeScore, LLMJudge
+    from ragverdict.judges.base import Judge, JudgeScore
 
 
 _CITATION_RE = re.compile(r"\[src:[^\]]+\]", re.IGNORECASE)
@@ -77,7 +77,7 @@ class RagQualityEvaluator(Evaluator):
         adapter: RagAdapter,
         spec: TestSpec,
         *,
-        judge: LLMJudge | None,
+        judge: Judge | None,
         thresholds: Thresholds,
     ) -> TestResult:
         t0 = time.perf_counter()
@@ -161,7 +161,7 @@ class RagQualityEvaluator(Evaluator):
 def _grade_case(
     case: RagQualityCase,
     response: RagResponse,
-    judge: LLMJudge | None,
+    judge: Judge | None,
     thresholds: Thresholds,
 ) -> CaseOutcome:
     text = response.text
