@@ -15,7 +15,13 @@ from typing import Any
 
 import httpx
 
-from ragverdict.judges.base import JudgeError, JudgeScore, PushbackVerdict, RefusalVerdict
+from ragverdict.judges.base import (
+    JudgeError,
+    JudgeScore,
+    JudgeTransportError,
+    PushbackVerdict,
+    RefusalVerdict,
+)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api"
 TYPESAFE_BASE_URL = "https://api.typesafe.ai"
@@ -171,10 +177,12 @@ class JevJudge:
                     return data
                 last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                 if response.status_code not in _RETRYABLE_STATUS:
-                    raise JudgeError(f"jev API call failed: {last_error}")
+                    raise JudgeTransportError(f"jev API call failed: {last_error}")
             if attempt < self.max_attempts:
                 time.sleep(self.backoff_s * 2 ** (attempt - 1))
-        raise JudgeError(f"jev API call failed after {self.max_attempts} attempts: {last_error}")
+        raise JudgeTransportError(
+            f"jev API call failed after {self.max_attempts} attempts: {last_error}"
+        )
 
     def _reason(self, what: str, p: float) -> str:
         return f"jev {self.model}: P({what})={p:.2f}"

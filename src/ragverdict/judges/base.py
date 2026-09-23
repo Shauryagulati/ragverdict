@@ -15,6 +15,10 @@ class JudgeError(Exception):
     """Raised when a judge call cannot produce a valid result."""
 
 
+class JudgeTransportError(JudgeError):
+    """The call never produced a judge answer — network/HTTP/API error; safe to retry."""
+
+
 class JudgeScore(BaseModel):
     """Score for one quality dimension (faithfulness or relevance).
 

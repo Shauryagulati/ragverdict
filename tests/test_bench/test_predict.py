@@ -13,6 +13,7 @@ import pytest
 
 from ragverdict.bench.predict import (
     BudgetError,
+    ClaudeBatchError,
     ClaudeBatchRunner,
     Prediction,
     PredictionStore,
@@ -22,9 +23,10 @@ from ragverdict.bench.predict import (
     parse_custom_id,
     run_claude_live,
     run_jev,
+    total_spend,
 )
 from ragverdict.bench.ragtruth import Example
-from ragverdict.judges.base import JudgeError, JudgeScore
+from ragverdict.judges.base import JudgeError, JudgeScore, JudgeTransportError
 from ragverdict.judges.jev_judge import JevAnswer
 from ragverdict.judges.llm_judge import LLMJudge
 
@@ -36,15 +38,18 @@ def _ex(i: int, hallucinated: bool = False) -> Example:
 
 
 class FakeJev:
-    def __init__(self, fail_ids: set[str] | None = None) -> None:
+    def __init__(
+        self, fail_ids: set[str] | None = None, error_cls: type[JudgeError] = JudgeTransportError
+    ) -> None:
         self.fail_ids = fail_ids or set()
         self.calls: list[str] = []
+        self.error_cls = error_cls
 
     def faithfulness_answer(self, response_text: str, retrieved_context: str) -> JevAnswer:
         eid = response_text.split()[-1]
         self.calls.append(eid)
         if eid in self.fail_ids:
-            raise JudgeError("jev boom")
+            raise self.error_cls("jev boom")
         return JevAnswer(p_yes=0.25, input_tokens=100, cost_usd=0.0000042,
                          served_model="typesafe/jev-1.13-20260917", latency_s=0.3)
 
@@ -63,6 +68,26 @@ def test_store_roundtrip_and_last_row_wins(tmp_path: Path) -> None:
     assert store.load("missing") == {}
 
 
+def test_load_skips_malformed_trailing_line(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    store.append(Prediction(run="x", example_id="1", repeat=0, score=0.5))
+    path = store.path("x")
+    with path.open("a") as fh:
+        fh.write('{"run": "x", "example_id": "2", "repeat": 0, "sc')  # truncated, no newline
+    loaded = store.load("x")
+    assert loaded.keys() == {("1", 0)}
+
+
+def test_total_spend_sums_every_row_including_superseded(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    store.append(Prediction(run="x", example_id="1", repeat=0, score=None,
+                            error="boom", error_kind="transport", cost_usd=0.01))
+    store.append(Prediction(run="x", example_id="1", repeat=0, score=0.5, cost_usd=0.02))
+    store.append(Prediction(run="x", example_id="2", repeat=0, score=0.3, cost_usd=0.03))
+    assert total_spend(store, "x") == pytest.approx(0.06)
+    assert total_spend(store, "missing") == 0.0
+
+
 def test_run_jev_records_predictions_and_errors(tmp_path: Path) -> None:
     store = PredictionStore(tmp_path)
     preds = run_jev([_ex(1), _ex(2)], FakeJev(fail_ids={"2"}), store, "jev", workers=2)
@@ -70,6 +95,7 @@ def test_run_jev_records_predictions_and_errors(tmp_path: Path) -> None:
     assert by_id["1"].score == 0.25 and by_id["1"].cost_usd == pytest.approx(0.0000042)
     assert by_id["1"].served_model == "typesafe/jev-1.13-20260917"
     assert by_id["2"].score is None and by_id["2"].error == "jev boom"
+    assert by_id["2"].error_kind == "transport"
 
 
 def test_run_jev_skips_cached_successes_and_retries_cached_errors(tmp_path: Path) -> None:
@@ -79,6 +105,16 @@ def test_run_jev_skips_cached_successes_and_retries_cached_errors(tmp_path: Path
     preds = run_jev([_ex(1), _ex(2)], fake, store, "jev")
     assert fake.calls == ["2"]
     assert all(p.error is None for p in preds)
+
+
+def test_run_jev_does_not_retry_judge_kind_errors(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    run_jev([_ex(1), _ex(2)], FakeJev(fail_ids={"2"}, error_cls=JudgeError), store, "jev")
+    stored = store.load("jev")
+    assert stored[("2", 0)].error_kind == "judge"
+    fake = FakeJev()
+    run_jev([_ex(1), _ex(2)], fake, store, "jev")
+    assert fake.calls == []  # example 2's judge-kind failure is final
 
 
 def test_run_jev_repeats(tmp_path: Path) -> None:
@@ -187,6 +223,77 @@ def test_resume_uses_logged_batch(tmp_path: Path) -> None:
     preds = runner.run([_ex(1)], "claude")
     assert len(batches.submitted) == 1  # no resubmission
     assert preds[0].score == 0.5
+
+
+def test_resumed_batch_is_marked_ingested(tmp_path: Path) -> None:
+    batches = FakeBatches([{}])
+    runner, _ = _batch_runner(tmp_path, batches)
+    batches.create(requests=[{"custom_id": "1-r0", "params": {}}])
+    log_path = tmp_path / "batches" / "claude.json"
+    log_path.parent.mkdir(parents=True)
+    log_path.write_text(json.dumps([{"batch_id": "batch_1", "ingested": False}]))
+    runner.run([_ex(1)], "claude")
+    logged = json.loads(log_path.read_text())
+    assert logged[0]["ingested"] is True
+
+
+def test_batch_results_outside_by_id_are_recorded_not_retried(tmp_path: Path) -> None:
+    batches = FakeBatches([{"9-r0": "errored"}])
+    runner, judge = _batch_runner(tmp_path, batches)
+    # a prior process submitted a batch covering examples "1" and "9"; this run only
+    # asks about "1" (e.g. "9" was dropped from the requested set after the crash).
+    batches.create(requests=[
+        {"custom_id": "1-r0", "params": judge.faithfulness_request("resp 1", "src 1")},
+        {"custom_id": "9-r0", "params": judge.faithfulness_request("resp 9", "src 9")},
+    ])
+    log = tmp_path / "batches" / "claude.json"
+    log.parent.mkdir(parents=True)
+    log.write_text(json.dumps([{"batch_id": "batch_1", "ingested": False}]))
+    preds = runner.run([_ex(1)], "claude")
+    assert {p.example_id for p in preds} == {"1"}
+    all_rows = runner.store.load("claude")
+    assert ("9", 0) in all_rows
+    assert all_rows[("9", 0)].error is not None and all_rows[("9", 0)].error_kind == "transport"
+    assert len(batches.submitted) == 1  # "9" was recorded, not retried (not in by_id)
+
+
+def test_resume_continues_to_new_pending_items(tmp_path: Path) -> None:
+    batches = FakeBatches([{}, {}])
+    runner, judge = _batch_runner(tmp_path, batches)
+    batches.create(requests=[{"custom_id": "1-r0", "params": judge.faithfulness_request("resp 1", "src 1")}])
+    log = tmp_path / "batches" / "claude.json"
+    log.parent.mkdir(parents=True)
+    log.write_text(json.dumps([{"batch_id": "batch_1", "ingested": False}]))
+    preds = runner.run([_ex(1), _ex(2)], "claude")
+    assert {p.example_id: p.score for p in preds} == {"1": 0.5, "2": 0.5}
+    assert len(batches.submitted) == 2
+    assert batches.submitted[1][0]["custom_id"] == "2-r0"
+
+
+def test_stale_submitting_marker_raises_and_does_not_resubmit(tmp_path: Path) -> None:
+    batches = FakeBatches([{}])
+    runner, _ = _batch_runner(tmp_path, batches)
+    log = tmp_path / "batches" / "claude.json"
+    log.parent.mkdir(parents=True)
+    log.write_text(json.dumps([{"batch_id": None, "submitting": True, "n_requests": 2}]))
+    with pytest.raises(ClaudeBatchError, match=r"batches\.list"):
+        runner.run([_ex(1)], "claude")
+    assert len(batches.submitted) == 0
+
+
+def test_log_has_real_batch_id_before_polling_starts(tmp_path: Path) -> None:
+    batches = FakeBatches([{}])
+    runner, _ = _batch_runner(tmp_path, batches)
+
+    def boom(batch_id: str) -> SimpleNamespace:
+        raise RuntimeError("simulated crash during poll")
+
+    batches.retrieve = boom  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        runner.run([_ex(1)], "claude")
+    log = json.loads((tmp_path / "batches" / "claude.json").read_text())
+    assert log[-1]["batch_id"] == "batch_1"
+    assert log[-1]["ingested"] is False
 
 
 def test_batch_skips_cached(tmp_path: Path) -> None:

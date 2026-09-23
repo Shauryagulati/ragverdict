@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 from ragverdict.bench.predict import Prediction, PredictionStore, collect, pending
 from ragverdict.bench.ragtruth import Example
-from ragverdict.judges.base import JudgeError, JudgeScore
+from ragverdict.judges.base import JudgeError, JudgeScore, JudgeTransportError
 from ragverdict.judges.llm_judge import faithfulness_prompt, output_schema
 
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -61,6 +61,7 @@ def chat_body(cfg: ChatJudgeConfig, response_text: str, source: str) -> dict[str
         "response_format": response_format,
         "max_tokens": cfg.max_tokens,
         "usage": {"include": True},
+        "provider": {"require_parameters": True},
     }
     if cfg.temperature is not None:
         body["temperature"] = cfg.temperature
@@ -113,10 +114,10 @@ def _post(
                 return data
             last = f"HTTP {response.status_code}: {response.text[:200]}"
             if response.status_code not in _RETRYABLE_STATUS:
-                raise JudgeError(last)
+                raise JudgeTransportError(last)
         if attempt < max_attempts:
             time.sleep(backoff_s * 2 ** (attempt - 1))
-    raise JudgeError(f"failed after {max_attempts} attempts: {last}")
+    raise JudgeTransportError(f"failed after {max_attempts} attempts: {last}")
 
 
 def run_chat_judge(
@@ -138,14 +139,20 @@ def run_chat_judge(
         ex, repeat = item
         started = time.perf_counter()
         data: dict[str, Any] = {}
+        error_kind: str | None = None
         try:
             data = _post(http, chat_body(cfg, ex.response, ex.source), api_key, max_attempts, backoff_s)
             score: JudgeScore | None = parse_chat_response(data)
             error = None
         except JudgeError as exc:
             score, error = None, str(exc)
+            error_kind = "transport" if isinstance(exc, JudgeTransportError) else "judge"
         usage_raw = data.get("usage")
         usage: dict[str, Any] = usage_raw if isinstance(usage_raw, dict) else {}
+        served_model = str(data.get("model", cfg.model))
+        provider = data.get("provider")
+        if provider:
+            served_model = f"{served_model} via {provider}"
         store.append(
             Prediction(
                 run=run,
@@ -156,9 +163,10 @@ def run_chat_judge(
                 output_tokens=int(usage.get("completion_tokens", 0) or 0),
                 cost_usd=float(usage.get("cost", 0.0) or 0.0),
                 latency_s=time.perf_counter() - started,
-                served_model=str(data.get("model", cfg.model)),
+                served_model=served_model,
                 reasoning=score.reasoning if score else "",
                 error=error,
+                error_kind=error_kind,
             )
         )
 

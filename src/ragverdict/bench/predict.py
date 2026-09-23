@@ -1,17 +1,25 @@
 """Run judges over examples and cache every prediction to append-only JSONL.
 
 Reruns never recompute a cached success, so a crashed or repeated run never pays
-twice; cached errors are retried. Claude goes through the Batch API (50% price)
-using exactly the request LLMJudge sends live. Submitted batch ids are logged
-before waiting so an interrupted run resumes the same batch.
+twice; cached transport errors (network/HTTP/API failures) are retried, but a
+judge-output failure (invalid JSON, truncation, refusal, an out-of-range score)
+is final — retrying it won't fix a bad answer, so `pending()` only retries rows
+whose `error_kind` is "transport" (or unset, for legacy rows written before this
+distinction existed). Claude goes through the Batch API (50% price) using
+exactly the request LLMJudge sends live. Submitted batch ids are logged before
+waiting so an interrupted run resumes the same batch; log writes are atomic
+(temp file + os.replace) and a batch's submission is logged as a "submitting"
+marker before `batches.create` is called, so a crash mid-submit is detected on
+the next run instead of silently risking a duplicate submission.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -20,7 +28,7 @@ from typing import Any, Protocol
 import anthropic
 
 from ragverdict.bench.ragtruth import Example
-from ragverdict.judges.base import JudgeError, JudgeScore
+from ragverdict.judges.base import JudgeError, JudgeScore, JudgeTransportError
 from ragverdict.judges.jev_judge import JevAnswer
 from ragverdict.judges.llm_judge import LLMJudge, parse_judge_message
 
@@ -42,8 +50,32 @@ class Prediction:
     served_model: str = ""
     reasoning: str = ""
     error: str | None = None
+    error_kind: str | None = None  # "transport" (retryable) | "judge" (final) | None (no error)
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+
+
+def _iter_predictions(path: Path) -> Iterator[Prediction]:
+    """Yield every well-formed row in `path`, skipping a malformed trailing line.
+
+    A crash mid-write can leave a truncated final line; that row never completed
+    and carries no information, so it's skipped rather than crashing the load.
+    """
+    if not path.exists():
+        return
+    with path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            try:
+                yield Prediction(**data)
+            except TypeError:
+                continue
 
 
 class PredictionStore:
@@ -57,15 +89,9 @@ class PredictionStore:
         return self.root / "raw" / f"{run}.jsonl"
 
     def load(self, run: str) -> dict[tuple[str, int], Prediction]:
-        path = self.path(run)
-        if not path.exists():
-            return {}
         rows: dict[tuple[str, int], Prediction] = {}
-        with path.open() as fh:
-            for line in fh:
-                if line.strip():
-                    pred = Prediction(**json.loads(line))
-                    rows[(pred.example_id, pred.repeat)] = pred
+        for pred in _iter_predictions(self.path(run)):
+            rows[(pred.example_id, pred.repeat)] = pred
         return rows
 
     def append(self, pred: Prediction) -> None:
@@ -74,6 +100,15 @@ class PredictionStore:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a") as fh:
                 fh.write(json.dumps(asdict(pred)) + "\n")
+
+
+def total_spend(store: PredictionStore, run: str) -> float:
+    """Total cost_usd over every raw row of `run`, including superseded/retried attempts.
+
+    Unlike `collect()`, this doesn't dedupe by (example_id, repeat) — a retried call still
+    cost money the first time, so the budget must count it too.
+    """
+    return sum(pred.cost_usd for pred in _iter_predictions(store.path(run)))
 
 
 def custom_id(example_id: str, repeat: int) -> str:
@@ -109,6 +144,14 @@ class BudgetError(Exception):
     """Raised when a run's estimated cost exceeds the allowed spend."""
 
 
+class ClaudeBatchError(Exception):
+    """Raised when a batch run needs human intervention before continuing.
+
+    Never auto-resubmits in this state — an ambiguous or in-flight submission could
+    otherwise be double-billed.
+    """
+
+
 def check_budget(n_calls: int, cost_per_call: float, max_spend_usd: float) -> float:
     estimate = n_calls * cost_per_call
     if estimate > max_spend_usd:
@@ -121,11 +164,16 @@ def check_budget(n_calls: int, cost_per_call: float, max_spend_usd: float) -> fl
 def pending(
     examples: Sequence[Example], done: dict[tuple[str, int], Prediction], repeats: int
 ) -> list[tuple[Example, int]]:
+    def needs_retry(pred: Prediction) -> bool:
+        # Judge-output failures are final — retrying won't fix a bad answer. Only
+        # transport failures (and legacy rows with no error_kind) get retried.
+        return pred.error is not None and pred.error_kind != "judge"
+
     return [
         (ex, r)
         for ex in examples
         for r in range(repeats)
-        if (ex.id, r) not in done or done[(ex.id, r)].error is not None
+        if (ex.id, r) not in done or needs_retry(done[(ex.id, r)])
     ]
 
 
@@ -154,7 +202,13 @@ def run_jev(
         try:
             answer = judge.faithfulness_answer(ex.response, ex.source)
         except JudgeError as exc:
-            store.append(Prediction(run=run, example_id=ex.id, repeat=repeat, score=None, error=str(exc)))
+            kind = "transport" if isinstance(exc, JudgeTransportError) else "judge"
+            store.append(
+                Prediction(
+                    run=run, example_id=ex.id, repeat=repeat, score=None,
+                    error=str(exc), error_kind=kind,
+                )
+            )
             return
         store.append(
             Prediction(
@@ -183,11 +237,13 @@ def run_claude_live(
         before_in, before_out = judge.input_tokens, judge.output_tokens
         before_read, before_write = judge.cache_read_tokens, judge.cache_creation_tokens
         started = time.perf_counter()
+        error_kind: str | None = None
         try:
             score: JudgeScore | None = judge.faithfulness(ex.response, ex.source)
             error = None
         except JudgeError as exc:
             score, error = None, str(exc)
+            error_kind = "transport" if isinstance(exc, JudgeTransportError) else "judge"
         latency = time.perf_counter() - started
         tokens_in = judge.input_tokens - before_in
         tokens_out = judge.output_tokens - before_out
@@ -211,6 +267,7 @@ def run_claude_live(
                 served_model=judge.model,
                 reasoning=score.reasoning if score else "",
                 error=error,
+                error_kind=error_kind,
             )
         )
     return collect(store, run, examples, 1)
@@ -234,19 +291,27 @@ class ClaudeBatchRunner:
 
     def run(self, examples: Sequence[Example], run: str, *, repeats: int = 1) -> list[Prediction]:
         by_id = {ex.id: ex for ex in examples}
-        batch_id = self._unfinished_batch(run)
-        if batch_id is None:
-            todo = pending(examples, self.store.load(run), repeats)
-            if not todo:
-                return collect(self.store, run, examples, repeats)
-            batch_id = self._submit(run, todo)
+        resumed_batch_id = self._unfinished_batch(run)
+        if resumed_batch_id is not None:
+            self._run_batch_to_completion(run, resumed_batch_id, by_id)
+        # Normal path: whatever's still missing — either because there was no batch to
+        # resume, or because the resumed batch (plus its one retry) didn't cover
+        # everything — gets a fresh batch.
+        todo = pending(examples, self.store.load(run), repeats)
+        if todo:
+            new_batch_id = self._submit(run, todo)
+            self._run_batch_to_completion(run, new_batch_id, by_id)
+        return collect(self.store, run, examples, repeats)
+
+    # ---------- internals ----------
+
+    def _run_batch_to_completion(
+        self, run: str, batch_id: str, by_id: dict[str, Example]
+    ) -> None:
         failed = self._finish(run, batch_id, by_id, record_failures=False)
         if failed:
             retry_id = self._submit(run, [(by_id[eid], r) for eid, r in failed])
             self._finish(run, retry_id, by_id, record_failures=True)
-        return collect(self.store, run, examples, repeats)
-
-    # ---------- internals ----------
 
     def _log_path(self, run: str) -> Path:
         return self.store.root / "batches" / f"{run}.json"
@@ -258,11 +323,21 @@ class ClaudeBatchRunner:
     def _write_log(self, run: str, entries: list[dict[str, Any]]) -> None:
         path = self._log_path(run)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(entries, indent=2))
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(entries, indent=2))
+        os.replace(tmp, path)
 
     def _unfinished_batch(self, run: str) -> str | None:
         for entry in self._read_log(run):
-            if not entry["ingested"]:
+            if entry.get("submitting") and entry.get("batch_id") is None:
+                raise ClaudeBatchError(
+                    f"run {run!r} has an incomplete batch submission logged "
+                    f"(n_requests={entry.get('n_requests')}) — the process may have crashed "
+                    "between submitting and logging the batch id. Check "
+                    "client.messages.batches.list() for a matching batch before rerunning; "
+                    "resubmitting blindly risks paying for the same requests twice."
+                )
+            if entry.get("batch_id") is not None and not entry.get("ingested", False):
                 return str(entry["batch_id"])
         return None
 
@@ -274,8 +349,12 @@ class ClaudeBatchRunner:
             }
             for ex, repeat in items
         ]
+        entries = self._read_log(run)
+        entries.append({"batch_id": None, "submitting": True, "n_requests": len(requests)})
+        self._write_log(run, entries)
         batch = self.client.messages.batches.create(requests=requests)
-        self._write_log(run, [*self._read_log(run), {"batch_id": batch.id, "ingested": False}])
+        entries[-1] = {"batch_id": batch.id, "ingested": False}
+        self._write_log(run, entries)
         return str(batch.id)
 
     def _finish(
@@ -286,22 +365,23 @@ class ClaudeBatchRunner:
         failed: list[tuple[str, int]] = []
         for item in self.client.messages.batches.results(batch_id):
             example_id, repeat = parse_custom_id(item.custom_id)
-            if example_id not in by_id:
-                continue
             result = item.result
             if result.type == "succeeded":
                 self.store.append(self._parse(run, example_id, repeat, result.message))
                 continue
             reason = f"batch {result.type}: {getattr(result, 'error', '')}".strip()
-            if record_failures:
+            if record_failures or example_id not in by_id:
                 self.store.append(
-                    Prediction(run=run, example_id=example_id, repeat=repeat, score=None, error=reason)
+                    Prediction(
+                        run=run, example_id=example_id, repeat=repeat, score=None,
+                        error=reason, error_kind="transport",
+                    )
                 )
             else:
                 failed.append((example_id, repeat))
         entries = self._read_log(run)
         for entry in entries:
-            if entry["batch_id"] == batch_id:
+            if entry.get("batch_id") == batch_id:
                 entry["ingested"] = True
         self._write_log(run, entries)
         return failed
@@ -319,7 +399,7 @@ class ClaudeBatchRunner:
             return Prediction(run=run, example_id=example_id, repeat=repeat, score=None,
                               input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
                               cache_read_tokens=cache_read, cache_write_tokens=cache_write,
-                              served_model=self.judge.model, error=str(exc))
+                              served_model=self.judge.model, error=str(exc), error_kind="judge")
         return Prediction(run=run, example_id=example_id, repeat=repeat, score=score.score,
                           input_tokens=tokens_in, output_tokens=tokens_out, cost_usd=cost,
                           cache_read_tokens=cache_read, cache_write_tokens=cache_write,

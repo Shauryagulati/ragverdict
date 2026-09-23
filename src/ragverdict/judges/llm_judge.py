@@ -28,11 +28,18 @@ from typing import Any, Literal, TypeVar
 import anthropic
 from pydantic import BaseModel, ValidationError
 
-from ragverdict.judges.base import JudgeError, JudgeScore, PushbackVerdict, RefusalVerdict
+from ragverdict.judges.base import (
+    JudgeError,
+    JudgeScore,
+    JudgeTransportError,
+    PushbackVerdict,
+    RefusalVerdict,
+)
 
 __all__ = [
     "JudgeError",
     "JudgeScore",
+    "JudgeTransportError",
     "LLMJudge",
     "PushbackVerdict",
     "RefusalVerdict",
@@ -334,7 +341,7 @@ class LLMJudge:
         try:
             message: Any = self._client.messages.create(**params)
         except anthropic.APIError as exc:
-            raise JudgeError(f"judge API call failed: {exc}") from exc
+            raise JudgeTransportError(f"judge API call failed: {exc}") from exc
         self._record_usage(getattr(message, "usage", None))
         return parse_judge_message(message, schema)
 

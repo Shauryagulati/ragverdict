@@ -29,12 +29,15 @@ def _ex(i: int) -> Example:
                    numeric=False, source_id="s")
 
 
-def _ok(content: str, finish: str = "stop") -> httpx.Response:
-    return httpx.Response(200, json={
+def _ok(content: str, finish: str = "stop", provider: str | None = None) -> httpx.Response:
+    body: dict = {
         "model": "deepseek/deepseek-v4.1-flash-20260801",
         "choices": [{"message": {"content": content}, "finish_reason": finish}],
         "usage": {"prompt_tokens": 1300, "completion_tokens": 60, "cost": 0.00016},
-    })
+    }
+    if provider is not None:
+        body["provider"] = provider
+    return httpx.Response(200, json=body)
 
 
 VALID = JudgeScore(score=0.5, reasoning="one claim unsupported").model_dump_json(exclude={"confidence"})
@@ -54,6 +57,7 @@ def test_chat_body_uses_claude_rubric_and_schema() -> None:
     assert body["max_tokens"] == 512 and body["temperature"] == 0.0
     assert body["reasoning"] == {"enabled": False}
     assert body["usage"] == {"include": True}
+    assert body["provider"] == {"require_parameters": True}
 
 
 def test_glm_body_omits_temperature_and_enables_reasoning() -> None:
@@ -100,11 +104,19 @@ def test_run_records_usage_cost_and_model(tmp_path: Path) -> None:
     assert p.reasoning == "one claim unsupported" and p.latency_s is not None
 
 
+def test_run_records_provider_in_served_model(tmp_path: Path) -> None:
+    preds = run_chat_judge([_ex(1)], DEEPSEEK_FLASH, PredictionStore(tmp_path), "deepseek",
+                           api_key="k", client=_client(lambda r: _ok(VALID, provider="Fireworks")),
+                           backoff_s=0)
+    assert preds[0].served_model == "deepseek/deepseek-v4.1-flash-20260801 via Fireworks"
+
+
 def test_run_records_invalid_output_as_error_row(tmp_path: Path) -> None:
     preds = run_chat_judge([_ex(1)], DEEPSEEK_FLASH, PredictionStore(tmp_path), "deepseek",
                            api_key="k", client=_client(lambda r: _ok("nope")), backoff_s=0)
     assert preds[0].score is None and "invalid JSON" in (preds[0].error or "")
     assert preds[0].cost_usd == pytest.approx(0.00016)  # a failed call still costs money
+    assert preds[0].error_kind == "judge"
 
 
 def test_run_retries_429(tmp_path: Path) -> None:
@@ -119,6 +131,7 @@ def test_run_non_retryable_http_error_is_error_row(tmp_path: Path) -> None:
                            api_key="k", client=_client(lambda r: httpx.Response(400, text="bad")),
                            backoff_s=0)
     assert preds[0].score is None and "HTTP 400" in (preds[0].error or "")
+    assert preds[0].error_kind == "transport"
 
 
 def test_run_sends_bearer_key(tmp_path: Path) -> None:
