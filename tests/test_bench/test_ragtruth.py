@@ -243,8 +243,7 @@ def test_real_test_split_counts() -> None:
 @pytest.mark.skipif(not (DEFAULT_CACHE / "response.jsonl").exists(), reason="RAGTruth not downloaded")
 def test_real_convention_dependent_counts() -> None:
     """120 test/good rows are convention_dependent: 49 clean only because every span is
-    implicit_true, 71 hallucinated only because every counted span is due_to_null
-    (methodology-redteam.md item A.6 / spec §6.6 item 6)."""
+    implicit_true, 71 hallucinated only because every counted span is due_to_null."""
     examples = load_examples(ensure_downloaded(), split="test")
     dependent = [e for e in examples if e.convention_dependent]
     implicit_only = [e for e in dependent if not e.hallucinated]

@@ -66,7 +66,7 @@ def test_chat_body_uses_claude_rubric_and_schema() -> None:
     assert body["reasoning"] == {"enabled": False}
     assert body["usage"] == {"include": True}
     assert body["provider"] == {
-        "order": ["OpenInference"], "allow_fallbacks": False, "require_parameters": True,
+        "order": ["DeepSeek"], "allow_fallbacks": False, "require_parameters": True,
     }
 
 
@@ -88,7 +88,7 @@ def test_glm_body_omits_temperature_and_enables_reasoning() -> None:
     body = chat_body(GLM_FLASH, "r", "c")
     assert "temperature" not in body
     assert body["reasoning"] == {"effort": "low"} and body["max_tokens"] == 4096
-    assert body["provider"]["order"] == ["DeepInfra"]
+    assert body["provider"]["order"] == ["Z.AI"]
 
 
 def test_json_object_mode_puts_schema_in_system_prompt() -> None:
@@ -206,7 +206,7 @@ def test_pilot_chat_body_uses_pilot_prompt_and_json_object_mode() -> None:
     system = body["messages"][0]["content"]
     assert "Judge only the supplied evidence" in system
     assert json.dumps(PILOT_SCHEMA) in system
-    assert body["provider"]["order"] == ["OpenInference"]  # same pinned provider as the ragverdict arm
+    assert body["provider"]["order"] == ["DeepSeek"]  # same pinned provider as the ragverdict arm
 
 
 def test_pilot_chat_body_carries_temperature_and_reasoning_from_cfg() -> None:
@@ -214,6 +214,16 @@ def test_pilot_chat_body_carries_temperature_and_reasoning_from_cfg() -> None:
     assert body["temperature"] == 0.0 and body["reasoning"] == {"enabled": False}
     glm_body = pilot_chat_body(GLM_FLASH_PILOT, "q", "c", "a")
     assert "temperature" not in glm_body and glm_body["reasoning"] == {"effort": "low"}
+
+
+def test_pilot_chat_body_rejects_empty_question() -> None:
+    with pytest.raises(ValueError, match="non-empty question and context"):
+        pilot_chat_body(DEEPSEEK_FLASH_PILOT, "", "ctx", "ans")
+
+
+def test_pilot_chat_body_rejects_empty_context() -> None:
+    with pytest.raises(ValueError, match="non-empty question and context"):
+        pilot_chat_body(DEEPSEEK_FLASH_PILOT, "q?", "", "ans")
 
 
 def test_parse_pilot_response_yes_is_hallucinated() -> None:
@@ -260,8 +270,9 @@ def test_run_chat_judge_pilot_prompt_sends_question_context_answer(tmp_path: Pat
     assert preds[0].score == 0.0  # "yes" -> hallucinated
 
 
-def test_run_chat_judge_ragverdict_prompt_is_byte_identical(tmp_path: Path) -> None:
-    """The default (ragverdict) prompt path is untouched by the pilot arm."""
+def test_run_chat_judge_ragverdict_prompt_dispatches_to_chat_body(tmp_path: Path) -> None:
+    """The default (ragverdict) prompt path routes through `chat_body`, unchanged by the
+    pilot arm: the request run_chat_judge actually sends matches calling chat_body directly."""
     seen: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

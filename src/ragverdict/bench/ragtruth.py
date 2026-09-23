@@ -54,7 +54,7 @@ class Example:
     # True iff the primary label only holds by convention: every span is implicit_true
     # (clean only because implicit_true content doesn't count), or every counted
     # (implicit_true==false) span is due_to_null (hallucinated only because of a null
-    # source field). See methodology-redteam.md item A.6 / spec §6.6 item 6.
+    # source field). Lets a sensitivity analysis exclude these convention-dependent rows.
     convention_dependent: bool = False
     question: str = ""  # QA only: source_info["question"]
     passages: str = ""  # QA only: source_info["passages"]

@@ -35,18 +35,23 @@ class ChatJudgeConfig:
     temperature: float | None = 0.0  # None = omit (provider default)
     json_mode: Literal["json_schema", "json_object"] = "json_schema"
     prompt: Literal["ragverdict", "pilot"] = "ragverdict"
-    # Pin routing to a single provider (Ruling 19.8) — otherwise OpenRouter can mix providers
-    # and quantizations call-to-call, which makes cost/latency/output incomparable.
+    # Pin routing to a single provider — otherwise OpenRouter can mix providers and
+    # quantizations call-to-call, which makes cost/latency/output incomparable.
     provider_order: tuple[str, ...] | None = None
 
 
-# Provider pinning (Ruling 19.8 / red-team A.8): `require_parameters` alone doesn't pin a
-# provider, so calls could otherwise mix providers and quantizations mid-run. Chosen from the
-# free `GET /v1/models/<author>/<slug>/endpoints` listing on 2026-09-22 — the cheapest endpoint
-# that supports both `response_format` and `reasoning` in `supported_parameters` (see
-# task-9c1-report.md for the full excerpt).
-DEEPSEEK_PROVIDER = ("OpenInference",)  # $0.0000001/$0.0000005 per token, fp4
-GLM_PROVIDER = ("DeepInfra",)  # $0.000000075/$0.00000025 per token, fp4
+# Provider pinning: `require_parameters` alone doesn't pin a provider, so calls could otherwise
+# mix providers and quantizations mid-run. Selection policy, applied to the free
+# `GET /v1/models/<author>/<slug>/endpoints` listing: prefer the model maker's own first-party
+# endpoint if one is listed (comparable to the pilot, which used first-party APIs); otherwise
+# the highest-precision endpoint (bf16 > fp8 > fp4) that supports both `response_format` and
+# `reasoning` in `supported_parameters` — cheap 4-bit quantization would be an unfair handicap
+# against the LLM judges relative to Jev.
+DEEPSEEK_PROVIDER = ("DeepSeek",)  # provider=DeepSeek (model maker), quantization=undisclosed
+# (not the low-bit quant third-party endpoints use); $0.0000003/$0.0000012 per token.
+# chosen 2026-09-22: first-party
+GLM_PROVIDER = ("Z.AI",)  # provider=Z.AI (model maker, Zhipu), quantization=fp8;
+# $0.00000015/$0.0000005 per token. chosen 2026-09-22: first-party
 
 # Mirrors the 2026-09-19 pilot: DeepSeek thinking off / temp 0 / 512 tokens;
 # GLM thinking on (effort low) / sampling default / 4096 tokens.
@@ -59,7 +64,8 @@ GLM_FLASH = ChatJudgeConfig(
     provider_order=GLM_PROVIDER,
 )
 
-# Replication arm (spec §6.6 item 9): same model/decoding, the pilot's binary prompt.
+# Replication arm mirroring the 2026-09-19 pilot's own evaluation: same model/decoding,
+# the pilot's binary prompt.
 DEEPSEEK_FLASH_PILOT = replace(DEEPSEEK_FLASH, prompt="pilot")
 GLM_FLASH_PILOT = replace(GLM_FLASH, prompt="pilot")
 
@@ -100,7 +106,7 @@ def chat_body(cfg: ChatJudgeConfig, response_text: str, source: str) -> dict[str
     return body
 
 
-# ---------- pilot replication arm (spec §6.6 item 9 / red-team A.9) ----------
+# ---------- pilot replication arm (mirrors the 2026-09-19 pilot's own evaluation rules) ----------
 # Verbatim components from the 2026-09-19 pilot at slavadubrov/sgr-judge-bench@5e14270.
 
 PILOT_POLICY = (
@@ -145,7 +151,14 @@ PILOT_SYSTEM = (
 def pilot_chat_body(cfg: ChatJudgeConfig, question: str, context: str, answer: str) -> dict[str, Any]:
     """The pilot's binary unsupported_claim_present body — needs {question, context, answer},
     which live on `Example` (question/passages/response), not on the ragverdict rubric's
-    (response_text, source) pair `chat_body` takes."""
+    (response_text, source) pair `chat_body` takes. An empty question/context means this was
+    called on a non-QA (or malformed) example, which would silently produce a garbage judgment
+    rather than a clear failure, so it's rejected instead."""
+    if not question or not context:
+        raise ValueError(
+            "pilot_chat_body needs a non-empty question and context (the pilot state is only "
+            "defined for QA examples)"
+        )
     user = json.dumps({"question": question, "context": context, "answer": answer})
     body: dict[str, Any] = {
         "model": cfg.model,
@@ -162,9 +175,21 @@ def pilot_chat_body(cfg: ChatJudgeConfig, question: str, context: str, answer: s
     return body
 
 
-def parse_pilot_response(data: dict[str, Any]) -> JudgeScore:
-    """"yes" -> hallucinated (score 0.0), "no" -> clean (score 1.0); the pilot has no claim
-    counts, so `supported_claims`/`total_claims` stay at their JudgeScore defaults (0)."""
+def _strip_fences(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
+def _extract_content(data: dict[str, Any]) -> str:
+    """The message content out of an OpenRouter chat-completion envelope, fence-stripped —
+    shared by both response parsers, since the envelope shape and truncation handling don't
+    depend on which prompt was sent. The `choices`/`message`/`content` envelope is the
+    gateway's job, not the LLM's — a missing or malformed envelope (e.g. an `{"error": ...}`
+    body) is a transport problem, distinct from the LLM producing bad content inside a
+    well-formed envelope."""
     try:
         choice = data["choices"][0]
         content = choice["message"]["content"] or ""
@@ -172,8 +197,15 @@ def parse_pilot_response(data: dict[str, Any]) -> JudgeScore:
         raise JudgeTransportError(f"unexpected response shape: {str(data)[:200]}") from exc
     if choice.get("finish_reason") == "length":
         raise JudgeError("judge output truncated (finish_reason=length)")
+    return _strip_fences(content)
+
+
+def parse_pilot_response(data: dict[str, Any]) -> JudgeScore:
+    """"yes" -> hallucinated (score 0.0), "no" -> clean (score 1.0); the pilot has no claim
+    counts, so `supported_claims`/`total_claims` stay at their JudgeScore defaults (0)."""
+    content = _extract_content(data)
     try:
-        verdict = json.loads(_strip_fences(content))["unsupported_claim_present"]
+        verdict = json.loads(content)["unsupported_claim_present"]
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise JudgeError(
             f"judge returned invalid JSON for the pilot verdict: {str(content)[:200]}"
@@ -187,27 +219,10 @@ def parse_pilot_response(data: dict[str, Any]) -> JudgeScore:
     return JudgeScore(score=score, reasoning=f"pilot verdict: unsupported_claim_present={verdict}")
 
 
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else ""
-        text = text.rsplit("```", 1)[0]
-    return text.strip()
-
-
 def parse_chat_response(data: dict[str, Any]) -> JudgeScore:
-    # The `choices`/`message`/`content` envelope is the gateway's job, not the LLM's —
-    # a missing or malformed envelope (e.g. an `{"error": ...}` body) is a transport
-    # problem, distinct from the LLM producing bad content inside a well-formed envelope.
+    content = _extract_content(data)
     try:
-        choice = data["choices"][0]
-        content = choice["message"]["content"] or ""
-    except (KeyError, IndexError, TypeError) as exc:
-        raise JudgeTransportError(f"unexpected response shape: {str(data)[:200]}") from exc
-    if choice.get("finish_reason") == "length":
-        raise JudgeError("judge output truncated (finish_reason=length)")
-    try:
-        return JudgeScore.model_validate_json(_strip_fences(content))
+        return JudgeScore.model_validate_json(content)
     except ValidationError as exc:
         raise JudgeError(f"judge returned invalid JSON for JudgeScore: {str(exc)[:200]}") from exc
 

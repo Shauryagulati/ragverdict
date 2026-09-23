@@ -70,9 +70,9 @@ def ragtruth() -> None:
 
 def _preflight(specs: list[RunSpec]) -> list[str]:
     """Everything that must be true before any run executes: credentials, a readable and
-    registered frozen config (for every test-split run — Ruling 21). Budget is checked
-    separately by the caller, after this — nothing here needs network or disk access to the
-    dataset."""
+    registered frozen config (for every test-split run — pre-registration must be locked
+    before results can be reported). Budget is checked separately by the caller, after this —
+    nothing here needs network or disk access to the dataset."""
     problems: list[str] = []
     if any(spec.judge in ("jev", "chat") for spec in specs) and not os.environ.get(
         "OPENROUTER_API_KEY"
@@ -194,7 +194,15 @@ def _record_invocation(
 
 
 def _pilot_state(ex: Example) -> dict[str, str]:
-    """The 2026-09-19 pilot's exact state keys (spec §6.6 item 9)."""
+    """The 2026-09-19 pilot's exact state keys — only meaningful for QA examples, which are
+    the only ones with question/passages populated. An empty question or passages means this
+    was called on a non-QA (or malformed) example, which would silently produce a garbage
+    judgment rather than a clear failure, so it's rejected instead."""
+    if not ex.question or not ex.passages:
+        raise ValueError(
+            f"example {ex.id!r} has no question/passages (task={ex.task!r}); the pilot state "
+            "is only defined for QA examples"
+        )
     return {"question": ex.question, "context": ex.passages, "answer": ex.response}
 
 

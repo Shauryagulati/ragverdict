@@ -90,8 +90,8 @@ def test_run_refuses_jev_when_frozen_config_not_registered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Every test-split run — not just `jev`/`jev-flip` — refuses until pre-registration is
-    done (Ruling 21). Uses a tmp placeholder rather than the real bench/frozen_config.json so
-    this test doesn't depend on the repo file's registered flag."""
+    done. Uses a tmp placeholder rather than the real bench/frozen_config.json so this test
+    doesn't depend on the repo file's registered flag."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     frozen_path = tmp_path / "frozen.json"
     _write_registered_frozen(frozen_path, registered=False)
@@ -106,7 +106,7 @@ def test_run_refuses_jev_when_frozen_config_not_registered(
 def test_run_refuses_non_jev_test_split_run_when_not_registered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The new gate (item F) covers every test-split run, not only the ones that read the
+    """The registration gate covers every test-split run, not only the ones that read the
     frozen paraphrase — e.g. `deepseek` (a fixed-paraphrase-free chat run) is gated too."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     frozen_path = tmp_path / "frozen.json"
@@ -198,7 +198,23 @@ def test_record_invocation_tolerates_legacy_flat_meta_file(tmp_path: Path) -> No
     assert fresh["n_computed"] == 2 and fresh["n_cached"] == 1
 
 
-# ---------- _execute dispatch (pilot-replication arm, spec §6.6 item 9) ----------
+# ---------- _execute dispatch (pilot-replication arm) ----------
+
+def test_pilot_state_rejects_empty_question() -> None:
+    ex = Example(id="1", split="test", task="QA", generator="g", source="s", response="resp",
+                hallucinated=False, span_types=(), span_texts=(), numeric=False,
+                question="", passages="ctx")
+    with pytest.raises(ValueError, match="question/passages"):
+        bench_cli._pilot_state(ex)
+
+
+def test_pilot_state_rejects_empty_passages() -> None:
+    ex = Example(id="1", split="test", task="QA", generator="g", source="s", response="resp",
+                hallucinated=False, span_types=(), span_texts=(), numeric=False,
+                question="q?", passages="")
+    with pytest.raises(ValueError, match="question/passages"):
+        bench_cli._pilot_state(ex)
+
 
 def test_execute_jev_pilot_state_passes_state_builder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -29,7 +29,7 @@ import anthropic
 
 from ragverdict.bench.ragtruth import Example
 from ragverdict.judges.base import JudgeError, JudgeScore, JudgeTransportError
-from ragverdict.judges.jev_judge import JevAnswer
+from ragverdict.judges.jev_judge import JevAnswer, reorient_to_supported
 from ragverdict.judges.llm_judge import LLMJudge, parse_judge_message
 
 # Standard list prices, $ per million tokens (input, output), as of 2026-09-22.
@@ -210,19 +210,6 @@ class _JevLike(Protocol):
     def ask(self, state: dict[str, str], question: str) -> JevAnswer: ...
 
 
-def _reorient_to_supported(answer: JevAnswer) -> JevAnswer:
-    """Same re-orientation `JevJudge.faithfulness_answer` applies when the configured
-    question means "is it unsupported?" — P(yes) becomes P(supported) = 1 - P(yes)."""
-    return JevAnswer(
-        p_yes=1.0 - answer.p_yes,
-        input_tokens=answer.input_tokens,
-        cost_usd=answer.cost_usd,
-        served_model=answer.served_model,
-        latency_s=answer.latency_s,
-        response_id=answer.response_id,
-    )
-
-
 def run_jev(
     examples: Sequence[Example],
     judge: _JevLike,
@@ -239,7 +226,7 @@ def run_jev(
             if state_builder is not None:
                 answer = judge.ask(state_builder(ex), judge.faithfulness_question)
                 if judge.question_means_unsupported:
-                    answer = _reorient_to_supported(answer)
+                    answer = reorient_to_supported(answer)
             else:
                 answer = judge.faithfulness_answer(ex.response, ex.source)
         except JudgeError as exc:

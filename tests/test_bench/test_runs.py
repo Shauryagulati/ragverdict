@@ -1,4 +1,4 @@
-"""RunSpec / select_examples / RUNS wiring for the pilot-replication arm (spec §6.6 item 9)."""
+"""RunSpec / select_examples / RUNS wiring for the pilot-replication arm."""
 
 from __future__ import annotations
 

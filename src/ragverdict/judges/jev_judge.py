@@ -47,6 +47,22 @@ class JevAnswer:
     response_id: str = ""
 
 
+def reorient_to_supported(answer: JevAnswer) -> JevAnswer:
+    """Re-orient a JevAnswer from P(yes) to P(supported) = 1 - P(yes) — used whenever the
+    configured question means "is it unsupported?" rather than "is it supported?". A module-
+    level function, not a method, so every caller that needs this re-orientation (JevJudge
+    itself, and the bench runner's pilot-state arm, which calls `ask()` directly) shares one
+    copy instead of each hand-rolling the JevAnswer field list."""
+    return JevAnswer(
+        p_yes=1.0 - answer.p_yes,
+        input_tokens=answer.input_tokens,
+        cost_usd=answer.cost_usd,
+        served_model=answer.served_model,
+        latency_s=answer.latency_s,
+        response_id=answer.response_id,
+    )
+
+
 class JevJudge:
     """Judge backed by Jev. Thread-safe: counters are updated under a lock."""
 
@@ -116,14 +132,7 @@ class JevJudge:
         )
         if not self.question_means_unsupported:
             return answer
-        return JevAnswer(
-            p_yes=1.0 - answer.p_yes,
-            input_tokens=answer.input_tokens,
-            cost_usd=answer.cost_usd,
-            served_model=answer.served_model,
-            latency_s=answer.latency_s,
-            response_id=answer.response_id,
-        )
+        return reorient_to_supported(answer)
 
     def ask(self, state: dict[str, str], question: str) -> JevAnswer:
         """Ask one yes/no question about `state`; returns P(yes) and usage."""
