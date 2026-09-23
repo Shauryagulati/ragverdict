@@ -199,9 +199,11 @@ def test_threshold_at_fpr_hand_computed() -> None:
     assert threshold_at_fpr(p, y, 1.0) == pytest.approx(0.9 + 1e-9)
 
 
-def test_threshold_at_fpr_none_when_even_lowest_threshold_exceeds() -> None:
-    # the lowest score is a negative, so every threshold flags >= 1 of 2 negatives (FPR >= 1/2)
-    assert threshold_at_fpr([0.1, 0.5, 0.9], [F, T, F], 0.25) is None
+def test_threshold_at_fpr_flags_nothing_when_even_lowest_threshold_exceeds() -> None:
+    # the lowest score is a negative, so every midpoint flags >= 1 of 2 negatives (FPR >= 1/2);
+    # the answer is the flag-nothing threshold t = min score (p < 0.1 flags nothing, FPR 0)
+    assert threshold_at_fpr([0.1, 0.5, 0.9], [F, T, F], 0.25) == 0.1
+    assert threshold_at_fpr([0.1, 0.5, 0.9], [F, T, F], 0.0) == 0.1
 
 
 def test_threshold_at_fpr_needs_negatives() -> None:

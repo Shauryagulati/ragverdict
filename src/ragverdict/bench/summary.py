@@ -2,8 +2,8 @@
 
 Conventions: positive = hallucinated; Jev's stored score is P(supported); every CI is a
 source-grouped percentile bootstrap with the frozen resamples/seed; "paired" means both arms
-are scored on the same resampled groups. The primary (confirmatory) analyses are H1 and H9
-(spec §6.6 item 2); every other hypothesis is exploratory and reported through its numbers.
+are scored on the same resampled groups. The primary (confirmatory) analyses are H1 and H9;
+every other hypothesis is exploratory and reported through its numbers only.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def _claims_unsupported(p: Prediction) -> bool:
 
 
 def llm_hallucinated(p: Prediction) -> bool:
-    """Pre-registered LLM verdict (spec §6.6 item 1): hallucinated iff the self-reported
+    """Pre-registered LLM verdict: hallucinated iff the self-reported
     score is below 1 OR the claim counts show an unsupported claim. Pilot-prompt runs record
     no claim counts (total_claims == 0), so for them this reduces to score < 1."""
     return _score(p) < 1.0 or _claims_unsupported(p)
@@ -460,7 +460,7 @@ def _qa_pilot_rules(
         # The 2026-09-19 pilot's exact Jev setting: paraphrase P, hallucinated iff p < 0.5,
         # independent of whatever threshold/paraphrase is currently frozen.
         ("jev_pilot_setting", "jev-para-P", untuned),
-        # Replication arm (spec §6.6 item 9): the pilot's state keys for Jev, the pilot's
+        # Replication arm: the pilot's state keys for Jev, the pilot's
         # binary prompt for DeepSeek/GLM (no claim counts, so the LLM rule is score < 1).
         ("jev_pilot_state", "jev-pilot-state", untuned),
         ("deepseek_pilot", "deepseek-pilot", llm_hallucinated),
@@ -506,8 +506,8 @@ def _headline_judges(
     frozen: FrozenConfig,
     keys: Sequence[str] = CLASSIFICATION_KEYS,
 ) -> dict[str, Any]:
-    """Untuned Jev and each LLM on `cohort`, plus tuned Jev (run "jev") as a secondary row
-    on cohort ∩ jev (its own n is reported; it equals the cohort's when jev scored it all)."""
+    """Untuned Jev and each LLM on `cohort`, plus tuned Jev (run "jev") as a secondary row.
+    Run "jev", when present, is part of the cohort's intersection, so every row shares one n."""
     labels = [e.hallucinated for e in cohort]
     groups = _groups(cohort)
     untuned = jev_rule(UNTUNED_JEV_THRESHOLD)
@@ -526,14 +526,13 @@ def _headline_judges(
             **_classification_cis([llm_hallucinated(preds[e.id]) for e in cohort], labels,
                                   groups, frozen, keys),
         }
-    sub = [e for e in cohort if e.id in tuned]
-    if sub:
+    if tuned:
         tuned_rule = jev_rule(frozen.jev_threshold)
         out["jev_tuned"] = {
             "label": "tuned_on_train", "run": "jev", "paraphrase": frozen.jev_paraphrase,
-            "threshold": frozen.jev_threshold, "n": len(sub),
-            **_classification_cis([tuned_rule(tuned[e.id]) for e in sub],
-                                  [e.hallucinated for e in sub], _groups(sub), frozen, keys),
+            "threshold": frozen.jev_threshold, "n": len(cohort),
+            **_classification_cis([tuned_rule(tuned[e.id]) for e in cohort], labels, groups,
+                                  frozen, keys),
         }
     return out
 
@@ -578,26 +577,41 @@ def _threshold_free(
         return (metrics.pr_curve([p_sup[i] for i in idx], y),
                 metrics.classification([llm_v[i] for i in idx], y))
 
-    def recall_at_llm_precision(idx: Sequence[int]) -> float:
+    def raw_recall_at_llm_precision(idx: Sequence[int]) -> float | None:
         curve, point = curve_and_point(idx)
-        value = metrics.recall_at_precision(curve, point["precision"])
-        if value is None:
-            raise ValueError("Jev's curve never reaches the LLM's precision")
-        return value
+        return metrics.recall_at_precision(curve, point["precision"])
+
+    def recall_at_llm_precision(idx: Sequence[int]) -> float:
+        # No Jev threshold reaches the LLM's precision: the only operating point that does
+        # not fall short of it is flagging nothing (precision undefined), whose recall is 0.
+        value = raw_recall_at_llm_precision(idx)
+        return 0.0 if value is None else value
+
+    def raw_precision_at_llm_recall(idx: Sequence[int]) -> float | None:
+        curve, point = curve_and_point(idx)
+        return metrics.precision_at_recall(curve, point["recall"])
 
     def precision_at_llm_recall(idx: Sequence[int]) -> float:
-        curve, point = curve_and_point(idx)
-        value = metrics.precision_at_recall(curve, point["recall"])
+        # Jev's last threshold flags everything (recall 1), so this is None only on a
+        # degenerate resample; that is genuinely undefined and counted as such.
+        value = raw_precision_at_llm_recall(idx)
         if value is None:
             raise ValueError("Jev's curve never reaches the LLM's recall")
         return value
 
+    everyone = list(range(len(cohort)))
     point = metrics.classification(llm_v, labels)
     return {
         "llm_precision": point["precision"],
         "llm_recall": point["recall"],
-        "jev_recall_at_llm_precision": _stat_ci(recall_at_llm_precision, groups, frozen),
-        "jev_precision_at_llm_recall": _stat_ci(precision_at_llm_recall, groups, frozen),
+        "jev_recall_at_llm_precision": {
+            **_stat_ci(recall_at_llm_precision, groups, frozen),
+            "flag_nothing": raw_recall_at_llm_precision(everyone) is None,
+        },
+        "jev_precision_at_llm_recall": {
+            **_stat_ci(precision_at_llm_recall, groups, frozen),
+            "flag_nothing": False,  # flagging nothing never reaches a recall target > 0
+        },
     }
 
 
@@ -652,7 +666,7 @@ def _headline(
         "cohort": {
             "n": len(cohort),
             "n_positive": sum(e.hallucinated for e in cohort),
-            "runs_intersected": [HEADLINE_JEV_RUN, *llms],
+            "runs_intersected": [HEADLINE_JEV_RUN, *(["jev"] if tuned else []), *llms],
         },
         "judges": _headline_judges(cohort, para_a, llms, tuned, frozen),
         "h1": _h1(cohort, para_a, claude, frozen) if claude else None,
@@ -671,34 +685,31 @@ def _h9(
     para_a: dict[str, Prediction],
     claude: dict[str, Prediction],
     frozen: FrozenConfig,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """H9 (primary): cascade F1 at the frozen band minus the best single judge's F1, on the
-    headline cohort ∩ run "jev" (the cascade's primary is the tuned Jev it was banded for).
-    The best single judge is picked by point F1 on this cohort and then held fixed across
-    resamples (ties go to the first in jev_tuned, jev_untuned, claude order)."""
-    sub = [e for e in cohort if e.id in tuned]
-    if not sub:
-        return None
-    labels = [e.hallucinated for e in sub]
-    p_tuned = [_score(tuned[e.id]) for e in sub]
-    claude_v = [llm_hallucinated(claude[e.id]) for e in sub]
+    headline cohort (which includes run "jev": the cascade's primary is the tuned Jev its band
+    was frozen for). The best single judge is picked by point F1 on this cohort and then held
+    fixed across resamples (ties go to the first in jev_tuned, jev_untuned, claude order)."""
+    labels = [e.hallucinated for e in cohort]
+    p_tuned = [_score(tuned[e.id]) for e in cohort]
+    claude_v = [llm_hallucinated(claude[e.id]) for e in cohort]
     cascade_v, escalated = metrics.cascade(
         p_tuned, claude_v, threshold=frozen.jev_threshold, band=frozen.cascade_band
     )
     untuned = jev_rule(UNTUNED_JEV_THRESHOLD)
     singles = {
         "jev_tuned": [p < frozen.jev_threshold for p in p_tuned],
-        "jev_untuned": [untuned(para_a[e.id]) for e in sub],
+        "jev_untuned": [untuned(para_a[e.id]) for e in cohort],
         "claude": claude_v,
     }
     single_f1 = {name: metrics.classification(v, labels)["f1"] for name, v in singles.items()}
     best = max(single_f1, key=lambda name: single_f1[name])
     diff = _diff_ci(_metric_on(cascade_v, labels, "f1"), _metric_on(singles[best], labels, "f1"),
-                    _groups(sub), frozen)
+                    _groups(cohort), frozen)
     assert diff is not None  # F1 is defined on every resample
     lo, hi = diff["ci95"]
     return {
-        "n": len(sub),
+        "n": len(cohort),
         "band": list(frozen.cascade_band),
         "threshold": frozen.jev_threshold,
         "cascade_f1": metrics.classification(cascade_v, labels)["f1"],
@@ -709,6 +720,10 @@ def _h9(
         "ci95": [lo, hi],
         "margin": H9_MARGIN,
         "verdict": h9_verdict(lo, hi, H9_MARGIN),
+        "notes": (
+            "best single judge chosen by point F1 on the full cohort and held fixed across "
+            "resamples; point estimate carries winner's-curse bias toward 'confirmed'"
+        ),
     }
 
 
@@ -762,7 +777,9 @@ def _matched_fpr(
 ) -> dict[str, Any] | None:
     """Subtype recall at a matched false-positive rate: Jev's threshold is the largest one
     whose FPR on the cohort's clean examples is <= the LLM's, then subtype recall is compared
-    as a paired difference. Each resample recomputes the LLM's FPR and Jev's threshold."""
+    as a paired difference. Each resample recomputes the LLM's FPR and Jev's threshold. When no
+    threshold fits the budget, Jev flags nothing (FPR 0, recall 0) — a real, always-feasible
+    operating point, so those resamples are kept rather than skipped."""
     labels = [e.hallucinated for e in cohort]
     if all(labels):
         return None  # FPR undefined without clean examples
@@ -770,7 +787,7 @@ def _matched_fpr(
     llm_v = [llm_hallucinated(llm[e.id]) for e in cohort]
     groups = _groups(cohort)
 
-    def jev_threshold(idx: Sequence[int]) -> float | None:
+    def jev_threshold(idx: Sequence[int]) -> float:
         neg = [i for i in idx if not labels[i]]
         if not neg:
             raise ValueError("no clean examples in this resample")
@@ -783,7 +800,8 @@ def _matched_fpr(
     out: dict[str, Any] = {
         "llm_fpr": sum(llm_v[i] for i in negatives) / len(negatives),
         "jev_threshold": t,
-        "jev_fpr": None if t is None else sum(p_sup[i] < t for i in negatives) / len(negatives),
+        "jev_flags_nothing": t <= min(p_sup),
+        "jev_fpr": sum(p_sup[i] < t for i in negatives) / len(negatives),
         "subtypes": {},
     }
     for family, subtypes in _subtype_members(cohort).items():
@@ -791,9 +809,9 @@ def _matched_fpr(
         for name, member in subtypes.items():
             def jev_recall(idx: Sequence[int], m: list[bool] = member) -> float:
                 pos = [i for i in idx if m[i]]
+                if not pos:
+                    raise ValueError("no positives of this subtype in this resample")
                 t_r = jev_threshold(idx)
-                if not pos or t_r is None:
-                    raise ValueError("recall at matched FPR undefined on this resample")
                 return sum(p_sup[i] < t_r for i in pos) / len(pos)
 
             def llm_recall(idx: Sequence[int], m: list[bool] = member) -> float:
@@ -806,11 +824,9 @@ def _matched_fpr(
             fam[name] = {
                 "n_pos": n_pos,
                 "descriptive": n_pos < DESCRIPTIVE_BELOW_N_POS,
-                "jev_recall": None if t is None else jev_recall(everyone),
+                "jev_recall": jev_recall(everyone),
                 "llm_recall": llm_recall(everyone),
-                "recall_diff_jev_minus_llm": (
-                    None if t is None else _diff_ci(jev_recall, llm_recall, groups, frozen)
-                ),
+                "recall_diff_jev_minus_llm": _diff_ci(jev_recall, llm_recall, groups, frozen),
             }
         out["subtypes"][family] = fam
     return out
@@ -894,6 +910,30 @@ def _calibration_extremes(test: list[Example], para_a: dict[str, Prediction],
     }
 
 
+# ---------- flip test (H8) ----------
+
+def _cache_hit_check(scored: list[Prediction]) -> dict[str, Any]:
+    """Were the flip repeats real, independent calls? A provider-side cache hit would return
+    the same answer for free, faking a 0% flip rate. Ruled out iff every repeat of an example
+    has its own non-empty response id and nonzero cost; None when any id is missing."""
+    ids = [p.response_id for p in scored if p.response_id]
+    n_zero_cost = sum(p.cost_usd == 0 for p in scored)
+    n_missing = len(scored) - len(ids)
+    ids_by_example: dict[str, list[str]] = {}
+    for p in scored:
+        ids_by_example.setdefault(p.example_id, []).append(p.response_id)
+    distinct_per_example = all(len(set(v)) == len(v) for v in ids_by_example.values())
+    return {
+        "n_rows": len(ids),
+        "n_distinct_response_ids": len(set(ids)),
+        "n_rows_missing_response_id": n_missing,
+        "n_zero_cost_rows": n_zero_cost,
+        "cache_hits_ruled_out": (
+            None if n_missing else (distinct_per_example and n_zero_cost == 0)
+        ),
+    }
+
+
 # ---------- build_summary ----------
 
 def build_summary(
@@ -948,8 +988,10 @@ def build_summary(
         if jev
     }
 
-    # Headline: common intersection of the untuned Jev and every present LLM judge.
-    cohort = [e for e in test if e.id in para_a and all(e.id in p for p in llms.values())]
+    # Headline: common intersection of the untuned Jev, the tuned Jev (when run "jev" has
+    # predictions) and every present LLM judge — one cohort, one n for every primary.
+    intersected = [*([jev] if jev else []), *llms.values()]
+    cohort = [e for e in test if e.id in para_a and all(e.id in p for p in intersected)]
     if cohort:
         summary["headline"] = _headline(cohort, para_a, llms, jev, frozen)
         no_conv = [e for e in cohort if not e.convention_dependent]
@@ -959,7 +1001,10 @@ def build_summary(
                 "n_dropped": len(cohort) - len(no_conv),
                 "judges": _headline_judges(no_conv, para_a, llms, jev, frozen,
                                            keys=("f1", "macro_f1")),
-                "h1": _h1(no_conv, para_a, llms["claude"], frozen) if "claude" in llms else None,
+                "h1": (
+                    {**_h1(no_conv, para_a, llms["claude"], frozen), "sensitivity": True}
+                    if "claude" in llms else None
+                ),
             } if no_conv else None,
         }
         jev_h = {"jev_untuned": [1 - _score(para_a[e.id]) for e in cohort]}
@@ -985,7 +1030,10 @@ def build_summary(
     summary["calibration_extremes"] = (
         _calibration_extremes(test, para_a, frozen) if para_a else None
     )
-    h9 = _h9(cohort, jev, para_a, llms["claude"], frozen) if cohort and "claude" in llms else None
+    h9 = (
+        _h9(cohort, jev, para_a, llms["claude"], frozen)
+        if cohort and jev and "claude" in llms else None
+    )
     summary["hypotheses"] = {
         "H1": summary["headline"]["h1"] if summary["headline"] else None,
         "H9": h9,
@@ -1132,9 +1180,11 @@ def build_summary(
     summary["flip"] = {}
     for run, rule in (("jev-flip", jev_halluc), ("claude-flip", llm_hallucinated)):
         per_example: dict[str, list[bool]] = {}
+        scored: list[Prediction] = []
         for (eid, _rep), p in store.load(run).items():
             if p.score is not None:
                 per_example.setdefault(eid, []).append(rule(p))
+                scored.append(p)
         complete = [v for v in per_example.values() if len(v) == 3]
         if complete:
             n_flipped = sum(len(set(v)) > 1 for v in complete)
@@ -1143,6 +1193,7 @@ def build_summary(
                 "n_flipped": n_flipped,
                 "flip_rate": metrics.flip_rate(complete),
                 "flip_ci95": list(metrics.wilson_ci(n_flipped, len(complete))),
+                **_cache_hit_check(scored),
             }
 
     thinking = _ok(store, "claude-thinking")

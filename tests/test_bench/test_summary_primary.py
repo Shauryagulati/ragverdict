@@ -1,4 +1,4 @@
-"""Task 9c-2 red-team statistics in build_summary: verdict rule, headline/H1, threshold-free,
+"""Primary/exploratory statistics in build_summary: verdict rule, headline/H1, threshold-free,
 sensitivity, subtypes, calibration extremes, H9, replication rows. Expected values are
 hand-computed in the comments next to each assertion."""
 
@@ -16,7 +16,7 @@ from ragverdict.bench.summary import build_summary, h1_verdict, h9_verdict, llm_
 
 FROZEN = FrozenConfig(
     jev_model="typesafe/jev-1.13", jev_paraphrase="A", jev_threshold=0.5,
-    claude_model="claude-sonnet-5", claude_rule="score<1.0", cascade_band=(0.3, 0.7),
+    claude_model="claude-sonnet-5", claude_rule="score<1.0 or supported<total", cascade_band=(0.3, 0.7),
     cascade_band_sweep=[(0.4, 0.6), (0.3, 0.7)], dataset_commit="abc",
     bootstrap_resamples=200, bootstrap_seed=0,
 )
@@ -131,7 +131,7 @@ def test_headline_is_untuned_on_common_intersection(tmp_path: Path) -> None:
     h = build_summary({"test": _examples()}, store, FROZEN, "sha")["headline"]
     assert h["cohort"]["n"] == 6  # ids 3..8
     assert h["cohort"]["n_positive"] == 3
-    assert h["cohort"]["runs_intersected"] == ["jev-para-A", "claude", "deepseek"]
+    assert h["cohort"]["runs_intersected"] == ["jev-para-A", "jev", "claude", "deepseek"]
     j = h["judges"]
     assert j["jev_untuned"]["run"] == "jev-para-A" and j["jev_untuned"]["threshold"] == 0.5
     for key in ("precision", "recall", "f1", "macro_f1", "accuracy"):
@@ -389,3 +389,107 @@ def test_missing_optional_sections_do_not_crash(tmp_path: Path) -> None:
     assert s["subtypes"]["matched_fpr"] == {}
     assert set(s["subtypes"]["subtype_auroc"]["severity"]["evident"]) >= {"jev_untuned", "n_pos"}
     assert s["sensitivity"]["invalid_as_wrong"].keys() == {"jev_untuned"}
+
+
+# ---------- pre-freeze cleanup ----------
+
+def test_tuned_run_joins_the_headline_intersection(tmp_path: Path) -> None:
+    """Every primary (all headline rows incl. tuned, H1, H9) is on one cohort with one n."""
+    store = PredictionStore(tmp_path)
+    _jev(store, "jev-para-A", _perfect_jev())
+    tuned = _perfect_jev()
+    del tuned["8"]  # run "jev" never scored id 8 -> it leaves the headline cohort
+    _jev(store, "jev", tuned)
+    _llm(store, "claude", _perfect_llm())
+    s = build_summary({"test": _examples()}, store, FROZEN, "sha")
+    h = s["headline"]
+    assert h["cohort"]["runs_intersected"] == ["jev-para-A", "jev", "claude"]
+    assert h["cohort"]["n"] == 7
+    assert {row["n"] for row in h["judges"].values()} == {7}
+    assert h["h1"]["n"] == 7 and s["hypotheses"]["H9"]["n"] == 7
+
+
+def test_matched_fpr_uses_flag_nothing_when_llm_fpr_is_zero(tmp_path: Path) -> None:
+    # claude flags only positives 5, 7 -> FPR_L = 0. Jev's lowest score (.05) is clean id 2,
+    # so every midpoint flags a clean example: Jev falls back to flagging nothing.
+    exs = [_ex(i, span="Subtle Baseless Info" if i in (1, 3) else "Evident Conflict")
+           for i in range(1, 9)]
+    store = PredictionStore(tmp_path)
+    _jev(store, "jev-para-A", {"1": 0.1, "2": 0.05, "3": 0.3, "4": 0.5, "5": 0.6, "6": 0.7,
+                               "7": 0.8, "8": 0.9})
+    rows = {str(i): (1.0, 2, 2) for i in range(1, 9)}
+    rows["5"] = rows["7"] = (0.5, 1, 2)
+    _llm(store, "claude", rows)  # type: ignore[arg-type]
+    m = build_summary({"test": exs}, store, FROZEN, "sha")["subtypes"]["matched_fpr"]["claude"]
+    assert m["llm_fpr"] == 0.0
+    assert m["jev_threshold"] == pytest.approx(0.05) and m["jev_flags_nothing"] is True
+    assert m["jev_fpr"] == 0.0
+    subtle = m["subtypes"]["severity"]["subtle"]  # Jev 0, claude 0
+    assert subtle["jev_recall"] == 0.0 and subtle["recall_diff_jev_minus_llm"]["diff"] == 0.0
+    evident = m["subtypes"]["severity"]["evident"]  # Jev 0, claude 1
+    assert evident["recall_diff_jev_minus_llm"]["diff"] == pytest.approx(-1.0)
+    # every resample WITH evident positives is kept (flag-nothing is an operating point);
+    # only resamples lacking them (2 of 8 examples: ~(6/8)^8 of 200) are genuinely undefined
+    # (resamples without clean ids 2 and 4 let Jev's matched threshold catch id 5, so hi > -1)
+    assert evident["recall_diff_jev_minus_llm"]["ci95"][0] == -1.0
+    assert 0 < evident["recall_diff_jev_minus_llm"]["n_resamples_undefined"] < 40
+
+
+def test_threshold_free_uses_flag_nothing_when_precision_unreachable(tmp_path: Path) -> None:
+    # claude is perfect (precision 1). Jev's lowest score (.05) is clean id 2, so every Jev
+    # threshold that flags anything has a false positive: precision 1 is unreachable -> recall 0.
+    store = PredictionStore(tmp_path)
+    jev = _perfect_jev()
+    jev["2"] = 0.05
+    _jev(store, "jev-para-A", jev)
+    _llm(store, "claude", _perfect_llm())
+    s = build_summary({"test": _examples()}, store, FROZEN, "sha")
+    c = s["headline"]["threshold_free"]["claude"]
+    r = c["jev_recall_at_llm_precision"]
+    assert r["value"] == 0.0 and r["flag_nothing"] is True
+    assert r["n_resamples_undefined"] == 0 and r["ci95"] is not None
+    # at recall 1, Jev's best is flagging {.05, .1 x4}: precision 4/5
+    assert c["jev_precision_at_llm_recall"]["value"] == pytest.approx(0.8)
+    assert c["jev_precision_at_llm_recall"]["flag_nothing"] is False
+
+
+def test_h9_notes_and_sensitivity_h1_flag(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    _jev(store, "jev", _perfect_jev())
+    _jev(store, "jev-para-A", _perfect_jev())
+    _llm(store, "claude", _perfect_llm())
+    s = build_summary({"test": _examples()}, store, FROZEN, "sha")
+    notes = s["hypotheses"]["H9"]["notes"]
+    assert "held fixed across resamples" in notes and "winner's-curse" in notes
+    assert s["sensitivity"]["excluding_convention_dependent"]["h1"]["sensitivity"] is True
+    assert "sensitivity" not in s["headline"]["h1"]
+
+
+def _flip_rows(store: PredictionStore, run: str, eid: str,
+               rows: list[tuple[str, float]]) -> None:
+    for rep, (rid, cost) in enumerate(rows):
+        store.append(Prediction(run=run, example_id=eid, repeat=rep, score=0.9, cost_usd=cost,
+                                response_id=rid))
+
+
+def test_flip_cache_hit_check(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    _flip_rows(store, "jev-flip", "1", [("a", 1e-5), ("b", 1e-5), ("c", 1e-5)])
+    _flip_rows(store, "jev-flip", "2", [("d", 1e-5), ("e", 1e-5), ("f", 1e-5)])
+    # claude-flip: example 2 reuses an id and one row cost nothing -> not ruled out
+    _flip_rows(store, "claude-flip", "1", [("g", 0.002), ("h", 0.002), ("i", 0.002)])
+    _flip_rows(store, "claude-flip", "2", [("j", 0.002), ("j", 0.0), ("k", 0.002)])
+    flip = build_summary({"test": _examples()}, store, FROZEN, "sha")["flip"]
+    j, c = flip["jev-flip"], flip["claude-flip"]
+    assert j["n_rows"] == 6 and j["n_distinct_response_ids"] == 6 and j["n_zero_cost_rows"] == 0
+    assert j["cache_hits_ruled_out"] is True
+    assert c["n_rows"] == 6 and c["n_distinct_response_ids"] == 5 and c["n_zero_cost_rows"] == 1
+    assert c["cache_hits_ruled_out"] is False
+
+
+def test_flip_cache_hit_check_none_without_ids(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    _flip_rows(store, "jev-flip", "1", [("a", 1e-5), ("", 1e-5), ("c", 1e-5)])
+    j = build_summary({"test": _examples()}, store, FROZEN, "sha")["flip"]["jev-flip"]
+    assert j["n_rows"] == 2 and j["n_rows_missing_response_id"] == 1
+    assert j["cache_hits_ruled_out"] is None

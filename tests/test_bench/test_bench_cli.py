@@ -18,7 +18,7 @@ from ragverdict.cli import cli
 def _write_registered_frozen(path: Path, *, registered: bool = True) -> None:
     path.write_text(json.dumps({
         "jev_model": "typesafe/jev-1.13", "jev_paraphrase": "A", "jev_threshold": 0.5,
-        "claude_model": "claude-sonnet-5", "claude_rule": "score<1.0",
+        "claude_model": "claude-sonnet-5", "claude_rule": "score<1.0 or supported<total",
         "cascade_band": [0.3, 0.7], "cascade_band_sweep": [[0.4, 0.6]],
         "dataset_commit": "abc", "bootstrap_resamples": 200, "bootstrap_seed": 0,
         "registered": registered,
@@ -308,7 +308,7 @@ def test_summarize_refuses_on_frozen_mismatch(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setattr(bench_cli, "load_examples", lambda d, split, quality="good": [])
     current = FrozenConfig(
         jev_model="typesafe/jev-1.13", jev_paraphrase="A", jev_threshold=0.5,
-        claude_model="claude-sonnet-5", claude_rule="score<1.0", cascade_band=(0.3, 0.7),
+        claude_model="claude-sonnet-5", claude_rule="score<1.0 or supported<total", cascade_band=(0.3, 0.7),
         cascade_band_sweep=[(0.4, 0.6)], dataset_commit="abc",
         bootstrap_resamples=200, bootstrap_seed=0, registered=True,
     )

@@ -250,14 +250,15 @@ def pr_curve(p_supported: Sequence[float], labels: Sequence[bool]) -> list[dict[
 
 def threshold_at_fpr(
     p_supported: Sequence[float], labels: Sequence[bool], max_fpr: float
-) -> float | None:
-    """Largest `pr_curve` threshold whose false-positive rate is <= `max_fpr`, or None if
-    even the lowest threshold exceeds it. FPR only grows with t, so this is the most
-    permissive (highest-recall) threshold that stays within the FPR budget."""
+) -> float:
+    """Largest `pr_curve` threshold whose false-positive rate is <= `max_fpr`. FPR only grows
+    with t, so this is the most permissive (highest-recall) threshold within the FPR budget.
+    If even the lowest threshold exceeds it, returns min(p_supported): 'p < min' flags
+    nothing, the always-feasible operating point (FPR 0, recall 0)."""
     n_neg = len(labels) - sum(labels)
     if n_neg == 0:
         raise ValueError("FPR needs at least one negative")
-    best: float | None = None
+    best = min(p_supported)  # flag-nothing threshold
     for t, _tp, fp in _flag_counts(p_supported, labels):
         if fp / n_neg > max_fpr:
             break

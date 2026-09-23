@@ -40,7 +40,7 @@ PARAPHRASES: dict[str, tuple[str, bool]] = {
 # Measured per-call costs used for pre-run estimates (spike, 2026-09-22).
 JEV_COST_PER_CALL = 0.00005
 # Claude batch, measured 2026-09-22: real batch smoke 5/5 ok, ~$0.0025/example at batch
-# price with cache reads working (Ruling 23).
+# price with cache reads working.
 CLAUDE_BATCH_COST_PER_CALL = 0.0026  # thinking disabled; measured 2026-09-22
 CLAUDE_BATCH_THINKING_COST_PER_CALL = 0.009  # measured 2026-09-22
 CLAUDE_LIVE_COST_PER_CALL = 0.0043
@@ -78,7 +78,7 @@ class RunSpec:
     cost_per_call: float = JEV_COST_PER_CALL
     chat: Literal["deepseek", "glm"] | None = None  # which ChatJudgeConfig, for judge="chat"
     # "pilot": use the 2026-09-19 pilot's state keys {question, context, answer} instead of
-    # the standard {source, response} — see spec §6.6 item 9 / red-team A.9.
+    # the standard {source, response}, so the pilot's Jev setting can be replicated exactly.
     jev_state: Literal["standard", "pilot"] = "standard"
     chat_prompt: Literal["ragverdict", "pilot"] = "ragverdict"  # judge="chat" only
     # Restrict a full-test run (per_task=None) to one task; the pilot replication arm only
@@ -94,29 +94,29 @@ RUNS: dict[str, RunSpec] = {
     # R2 — Claude Sonnet 5, thinking off, full test set, Batch API
     "claude": RunSpec("claude", "test", None, 0, "claude_batch",
                       cost_per_call=CLAUDE_BATCH_COST_PER_CALL),
-    # R8 — cheap LLM judges (Ruling 8), full test set, same rubric as Claude
+    # R8 — cheap LLM judges, full test set, same rubric as Claude
     "deepseek": RunSpec("deepseek", "test", None, 0, "chat", chat="deepseek",
                         cost_per_call=DEEPSEEK_COST_PER_CALL),
     "glm": RunSpec("glm", "test", None, 0, "chat", chat="glm", cost_per_call=GLM_COST_PER_CALL),
     # R4 — Jev paraphrase robustness, full test set
     **{f"jev-para-{p}": RunSpec(f"jev-para-{p}", "test", None, 0, "jev", paraphrase=p)
        for p in "ABCDEP"},
-    # R5 — flip test, 102 test examples x 3 repeats (Ruling 23 budget resize); same seed 13
-    # so both judges get the same sample
+    # R5 — flip test, 102 test examples x 3 repeats (sized to the measured batch cost);
+    # same seed 13 so both judges get the same sample
     "jev-flip": RunSpec("jev-flip", "test", 34, 13, "jev", repeats=3),
     "claude-flip": RunSpec("claude-flip", "test", 34, 13, "claude_batch", repeats=3,
                            cost_per_call=CLAUDE_BATCH_COST_PER_CALL),
-    # R6 — Claude thinking on, 150 test examples (Ruling 23 budget resize)
+    # R6 — Claude thinking on, 150 test examples (sized to the measured batch cost)
     "claude-thinking": RunSpec("claude-thinking", "test", 50, 17, "claude_batch",
                                thinking="model_default",
                                cost_per_call=CLAUDE_BATCH_THINKING_COST_PER_CALL),
     # R7 — Claude live latency sample, 102 test examples
     "claude-live": RunSpec("claude-live", "test", 34, 19, "claude_live",
                            cost_per_call=CLAUDE_LIVE_COST_PER_CALL),
-    # R9 — replication arm on QA-900 under the pilot's own rules (spec §6.6 item 9 /
-    # red-team A.9): the pilot's state keys for Jev, the pilot's binary prompt for the chat
-    # judges. Run LAST, only if budget remains (Ruling 20) — these are additive, not part of
-    # the primary comparison.
+    # R9 — replication arm on QA-900 under the 2026-09-19 pilot's own rules: the pilot's
+    # state keys for Jev, the pilot's binary prompt for the chat judges. Our primary setup
+    # differs from the pilot in both, so this arm shows how much of any gap is setup. Run
+    # last, only if budget remains — additive, not part of the primary comparison.
     "jev-pilot-state": RunSpec("jev-pilot-state", "test", None, 0, "jev", paraphrase="P",
                                jev_state="pilot", task_filter="QA"),
     "deepseek-pilot": RunSpec("deepseek-pilot", "test", None, 0, "chat", chat="deepseek",
@@ -150,7 +150,8 @@ class FrozenConfig(BaseModel):
     jev_paraphrase: str  # key into PARAPHRASES
     jev_threshold: float  # hallucinated iff P(supported) < threshold
     claude_model: str
-    claude_rule: Literal["score<1.0"]
+    # LLM verdict: hallucinated iff score < 1.0 or supported_claims < total_claims
+    claude_rule: Literal["score<1.0 or supported<total"]
     cascade_band: tuple[float, float]
     cascade_band_sweep: list[tuple[float, float]]
     dataset_commit: str

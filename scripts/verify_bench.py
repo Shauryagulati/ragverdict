@@ -82,6 +82,26 @@ def f1s(y: np.ndarray, preds: np.ndarray) -> tuple[float, float]:
             float(f1_score(y, preds, average="macro", zero_division=0)))
 
 
+def h1_verdict(lo: float, hi: float, delta: float = 0.03) -> str:
+    """TOST on the 90% CI of F1(Jev untuned) - F1(Claude)."""
+    if -delta <= lo and hi <= delta:
+        return "equivalent"
+    if lo > delta:
+        return "jev_better"
+    if hi < -delta:
+        return "jev_worse"
+    return "inconclusive"
+
+
+def h9_verdict(lo: float, hi: float, margin: float = 0.02) -> str:
+    """H9 predicts the cascade beats the best single judge by < margin F1 (95% CI)."""
+    if hi < margin:
+        return "confirmed"
+    if lo >= margin:
+        return "refuted"
+    return "inconclusive"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, required=True)
@@ -121,12 +141,16 @@ def main() -> int:
             rate = float(np.mean([llm_inconsistent(scores[i]) for i in ids]))
             checks.append((f"{name}.inconsistency", rate, block["verdict_inconsistency_rate"]))
 
+    labeled: list[tuple[str, str, str]] = []  # (check, independent, summary) for verdicts
     headline: dict[str, Any] | None = summary.get("headline")
     if headline is not None:
-        # Headline cohort: good test examples scored by jev-para-A and every LLM run with data.
+        # Headline cohort: good test examples scored by jev-para-A, by run "jev" when it has
+        # data, and by every LLM run with data.
         para_a = load_scores(args.out, "jev-para-A")
+        tuned = load_scores(args.out, "jev")
         llms = {run: sc for run in LLM_RUNS if (sc := load_scores(args.out, run))}
-        cohort = [i for i in labels if i in para_a and all(i in sc for sc in llms.values())]
+        others = [*([tuned] if tuned else []), *llms.values()]
+        cohort = [i for i in labels if i in para_a and all(i in sc for sc in others)]
         y = np.array([labels[i] for i in cohort])
         checks.append(("headline.n", float(len(cohort)), float(headline["cohort"]["n"])))
         verdicts = {"jev_untuned": np.array([para_a[i]["score"] < 0.5 for i in cohort])}
@@ -137,14 +161,41 @@ def main() -> int:
             checks.append((f"headline.{name}.f1", f1, block["f1"]["value"]))
             checks.append((f"headline.{name}.macro_f1", macro, block["macro_f1"]["value"]))
         if "claude" in verdicts:
+            h1 = headline["h1"]
             diff = f1s(y, verdicts["jev_untuned"])[0] - f1s(y, verdicts["claude"])[0]
-            checks.append(("headline.h1_diff", diff, headline["h1"]["diff"]))
+            checks.append(("headline.h1_diff", diff, h1["diff"]))
+            labeled.append(("headline.h1_verdict", h1_verdict(*h1["ci90"]), h1["verdict"]))
+
+        h9 = summary.get("hypotheses", {}).get("H9")
+        if h9 is not None:
+            # Cascade replay: Jev (tuned) decides unless lo < p < hi, then Claude decides.
+            p_t = np.array([tuned[i]["score"] for i in cohort])
+            lo_band, hi_band = frozen["cascade_band"]
+            escalate = (p_t > lo_band) & (p_t < hi_band)
+            cascade = np.where(escalate, verdicts["claude"], p_t < frozen["jev_threshold"])
+            singles = {"jev_tuned": p_t < frozen["jev_threshold"],
+                       "jev_untuned": verdicts["jev_untuned"], "claude": verdicts["claude"]}
+            single_f1 = {name: f1s(y, v)[0] for name, v in singles.items()}
+            top = max(single_f1.values())
+            best = next(name for name, f in single_f1.items() if f >= top - 1e-12)  # first wins
+            cascade_f1 = f1s(y, cascade)[0]
+            checks.append(("h9.n", float(len(cohort)), float(h9["n"])))
+            checks.append(("h9.cascade_f1", cascade_f1, h9["cascade_f1"]))
+            for name, f in single_f1.items():
+                checks.append((f"h9.single.{name}", f, h9["single_judge_f1"][name]))
+            checks.append(("h9.diff", cascade_f1 - single_f1[best], h9["diff"]))
+            labeled.append(("h9.best_single_judge", best, h9["best_single_judge"]))
+            labeled.append(("h9.verdict", h9_verdict(*h9["ci95"]), h9["verdict"]))
 
     mismatches = [(name, mine, theirs) for name, mine, theirs in checks if abs(mine - theirs) > TOL]
     for name, mine, theirs in checks:
         flag = "MISMATCH" if (name, mine, theirs) in mismatches else "ok"
         print(f"{flag:8} {name:28} independent={mine:.6f} summary={theirs:.6f}")
-    if mismatches:
+    label_mismatches = [c for c in labeled if c[1] != c[2]]
+    for name, mine_s, theirs_s in labeled:
+        flag = "MISMATCH" if mine_s != theirs_s else "ok"
+        print(f"{flag:8} {name:28} independent={mine_s} summary={theirs_s}")
+    if mismatches or label_mismatches:
         return 1
     print("VERIFIED")
     return 0

@@ -14,7 +14,7 @@ from ragverdict.bench.summary import build_summary
 
 FROZEN = FrozenConfig(
     jev_model="typesafe/jev-1.13", jev_paraphrase="A", jev_threshold=0.5,
-    claude_model="claude-sonnet-5", claude_rule="score<1.0", cascade_band=(0.3, 0.7),
+    claude_model="claude-sonnet-5", claude_rule="score<1.0 or supported<total", cascade_band=(0.3, 0.7),
     cascade_band_sweep=[(0.4, 0.6), (0.3, 0.7)], dataset_commit="abc",
     bootstrap_resamples=200, bootstrap_seed=0,
 )
@@ -59,7 +59,7 @@ def test_perfect_jev_and_claude(tmp_path: Path) -> None:
     assert set(j["by_task"]) == {"QA", "Summary", "Data2txt"}
     assert j["by_task"]["QA"]["auroc_ci95"] is not None
     assert "recall_ci95" in j["recall_by_severity"]["evident"]
-    # untuned Jev is run jev-para-A @ 0.5 (spec §6.6 item 1), never run "jev" at 0.5
+    # untuned Jev is run jev-para-A @ 0.5 (product-default wording), never run "jev" at 0.5
     assert "jev_untuned" not in summary["judges"]
     assert c["frac_score_eq_1"] == pytest.approx(0.5)
     assert j["cost_usd_per_1m"] == pytest.approx(50.0)

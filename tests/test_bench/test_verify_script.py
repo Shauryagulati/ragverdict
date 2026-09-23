@@ -6,6 +6,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from ragverdict.bench.predict import Prediction, PredictionStore
 from ragverdict.bench.ragtruth import load_examples
@@ -27,11 +30,8 @@ def _dataset(root: Path) -> None:
     (root / "response.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
 
-def test_verifier_matches_summary(tmp_path: Path) -> None:
-    data = tmp_path / "data"
-    data.mkdir()
-    _dataset(data)
-    out = tmp_path / "out"
+def _full_store(out: Path) -> PredictionStore:
+    """jev (tuned), jev-para-A, claude and deepseek over the 14-example dataset."""
     store = PredictionStore(out)
     for i in range(14):
         hallucinated = i % 3 == 0
@@ -59,21 +59,60 @@ def test_verifier_matches_summary(tmp_path: Path) -> None:
             store.append(Prediction(run="deepseek", example_id=str(i), repeat=0,
                                     score=0.5 if i % 2 == 0 else 1.0, supported_claims=1,
                                     total_claims=1 if i % 2 else 2, cost_usd=0.0004))
-    frozen_path = REPO / "bench" / "frozen_config.json"
-    frozen, sha = load_frozen(frozen_path)
-    summary = build_summary({"test": load_examples(data, split="test")}, store, frozen, sha)
+    return store
+
+
+FROZEN_PATH = REPO / "bench" / "frozen_config.json"
+
+
+def _summarize(data: Path, store: PredictionStore) -> dict[str, Any]:
+    frozen, sha = load_frozen(FROZEN_PATH)
+    return build_summary({"test": load_examples(data, split="test")}, store, frozen, sha)
+
+
+def _verify(data: Path, out: Path, summary: dict[str, Any]) -> subprocess.CompletedProcess[str]:
     (out / "summary.json").write_text(json.dumps(summary))
-    result = subprocess.run(
+    return subprocess.run(
         [sys.executable, str(REPO / "scripts" / "verify_bench.py"), "--out", str(out),
-         "--data", str(data), "--frozen", str(frozen_path)],
+         "--data", str(data), "--frozen", str(FROZEN_PATH)],
         capture_output=True, text=True,
     )
+
+
+def test_verifier_matches_summary(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    _dataset(data)
+    out = tmp_path / "out"
+    summary = _summarize(data, _full_store(out))
+    result = _verify(data, out, summary)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "VERIFIED" in result.stdout
     for check in ("claude.f1", "claude.inconsistency", "jev_untuned.f1", "headline.n",
-                  "headline.claude.f1", "headline.h1_diff"):
+                  "headline.claude.f1", "headline.h1_diff", "headline.h1_verdict",
+                  "h9.cascade_f1", "h9.single.jev_tuned", "h9.single.claude", "h9.diff",
+                  "h9.verdict"):
         assert check in result.stdout, result.stdout
     assert summary["headline"]["cohort"]["n"] == 13
+    assert summary["hypotheses"]["H9"] is not None
+
+
+@pytest.mark.parametrize("tamper", ["h1_verdict", "h9_cascade_f1", "h9_verdict"])
+def test_verifier_flags_tampered_hypotheses(tmp_path: Path, tamper: str) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    _dataset(data)
+    out = tmp_path / "out"
+    summary = _summarize(data, _full_store(out))
+    h1, h9 = summary["headline"]["h1"], summary["hypotheses"]["H9"]
+    if tamper == "h1_verdict":
+        h1["verdict"] = "jev_better" if h1["verdict"] != "jev_better" else "jev_worse"
+    elif tamper == "h9_cascade_f1":
+        h9["cascade_f1"] += 0.1
+    else:
+        h9["verdict"] = "confirmed" if h9["verdict"] != "confirmed" else "refuted"
+    result = _verify(data, out, summary)
+    assert result.returncode == 1 and "MISMATCH" in result.stdout, result.stdout
 
 
 def test_verifier_flags_a_tampered_summary(tmp_path: Path) -> None:
@@ -88,15 +127,8 @@ def test_verifier_flags_a_tampered_summary(tmp_path: Path) -> None:
         store.append(Prediction(run="claude", example_id=str(i), repeat=0,
                                 score=1.0, supported_claims=1 if hallucinated else 2,
                                 total_claims=2, cost_usd=0.002))
-    frozen_path = REPO / "bench" / "frozen_config.json"
-    frozen, sha = load_frozen(frozen_path)
-    summary = build_summary({"test": load_examples(data, split="test")}, store, frozen, sha)
+    summary = _summarize(data, store)
     assert summary["judges"]["claude"]["f1"]["value"] == 1.0  # claims catch every positive
     summary["judges"]["claude"]["f1"]["value"] = 0.0  # what the old score<1 rule would report
-    (out / "summary.json").write_text(json.dumps(summary))
-    result = subprocess.run(
-        [sys.executable, str(REPO / "scripts" / "verify_bench.py"), "--out", str(out),
-         "--data", str(data), "--frozen", str(frozen_path)],
-        capture_output=True, text=True,
-    )
+    result = _verify(data, out, summary)
     assert result.returncode == 1 and "MISMATCH" in result.stdout

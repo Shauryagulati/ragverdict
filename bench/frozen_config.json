@@ -3,7 +3,7 @@
   "jev_paraphrase": "A",
   "jev_threshold": 0.5,
   "claude_model": "claude-sonnet-5",
-  "claude_rule": "score<1.0",
+  "claude_rule": "score<1.0 or supported<total",
   "cascade_band": [0.3, 0.7],
   "cascade_band_sweep": [[0.45, 0.55], [0.4, 0.6], [0.35, 0.65], [0.3, 0.7], [0.25, 0.75], [0.2, 0.8], [0.1, 0.9]],
   "dataset_commit": "c103204b9ce28d6bbad859304bf30de72b8ed8fe",
