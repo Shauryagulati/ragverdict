@@ -7,31 +7,43 @@ The judge exposes four methods:
 - `refusal(response, query)` — is the response an explicit refusal / "I don't know"?
 - `pushback(response, false_premise)` — did the response correct a false premise?
 
-Each call uses `client.messages.parse()` with a Pydantic schema so the parsed
-return value is guaranteed-valid. Each method's rubric goes in a cache-controlled
-system block — when the same method is called repeatedly during a run AND the
-rubric crosses the model's minimum-cacheable-prefix length, the prefix is served
-from the prompt cache (~0.1x cost on cached tokens).
+Every call is built by `_request()` as plain `messages.create` kwargs with an
+`output_config` JSON schema derived from the Pydantic result model, and every
+response is validated by `parse_judge_message()`. The Batch API accepts the same
+kwargs as a request's `params`, so batch and live runs use identical prompts,
+schemas, and validation — only the transport differs.
 
-V0 caveat on caching: the rubrics are currently 400-600 tokens, below Sonnet
-4.6's 2048-token minimum cacheable prefix length. The `cache_control` is wired
-correctly and will start hitting once rubrics grow (more examples + edge-case
-guidance) or when the user configures a model with a smaller minimum.
+`thinking="disabled"` exists because models that think by default (Sonnet 5)
+can spend the output budget on reasoning and truncate the JSON answer.
+
+Caching caveat: rubrics are 400-600 tokens, below the minimum cacheable prefix
+on current models, so `cache_control` is wired but rarely hits.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import anthropic
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ragverdict.judges.base import JudgeError, JudgeScore, PushbackVerdict, RefusalVerdict
 
-__all__ = ["JudgeError", "JudgeScore", "LLMJudge", "PushbackVerdict", "RefusalVerdict"]
+__all__ = [
+    "JudgeError",
+    "JudgeScore",
+    "LLMJudge",
+    "PushbackVerdict",
+    "RefusalVerdict",
+    "Thinking",
+    "output_schema",
+    "parse_judge_message",
+]
 
 T = TypeVar("T", bound=BaseModel)
+
+Thinking = Literal["model_default", "disabled"]
 
 
 _FAITHFULNESS_SYSTEM = """\
@@ -202,6 +214,41 @@ Output a JSON object matching the supplied schema.
 """
 
 
+def output_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """JSON schema the API enforces for `model`, minus fields the LLM must not fill.
+
+    `confidence` belongs to probabilistic judges (Jev); an LLM judge never sets it,
+    so it is removed from the schema the model is constrained to.
+    """
+    schema: dict[str, Any] = anthropic.transform_schema(model.model_json_schema())
+    schema.get("properties", {}).pop("confidence", None)
+    if "required" in schema:
+        schema["required"] = [name for name in schema["required"] if name != "confidence"]
+    return schema
+
+
+def parse_judge_message(message: Any, schema: type[T]) -> T:
+    """Validate one Messages API response against `schema`. Shared by live and batch paths."""
+    stop_reason = getattr(message, "stop_reason", None)
+    if stop_reason == "max_tokens":
+        raise JudgeError(
+            "judge output truncated (stop_reason=max_tokens); raise the judge's max_tokens "
+            "or set thinking: disabled"
+        )
+    if stop_reason == "refusal":
+        raise JudgeError("judge declined to answer (stop_reason=refusal)")
+    text = next(
+        (block.text for block in message.content if getattr(block, "type", None) == "text"),
+        None,
+    )
+    if text is None:
+        raise JudgeError("judge returned no text block")
+    try:
+        return schema.model_validate_json(text)
+    except ValidationError as exc:
+        raise JudgeError(f"judge returned invalid JSON for {schema.__name__}: {exc}") from exc
+
+
 class LLMJudge:
     """Anthropic-backed judge. Tests inject a stub client via the `client` kwarg."""
 
@@ -210,10 +257,12 @@ class LLMJudge:
         *,
         model: str = "claude-sonnet-4-6",
         client: anthropic.Anthropic | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
+        thinking: Thinking = "model_default",
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
+        self.thinking = thinking
         if client is None:
             if not os.getenv("ANTHROPIC_API_KEY"):
                 raise JudgeError(
@@ -224,66 +273,68 @@ class LLMJudge:
         self._client = client
         self.cache_creation_tokens = 0
         self.cache_read_tokens = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
 
-    def faithfulness(self, response_text: str, retrieved_context: str) -> JudgeScore:
+    def faithfulness_request(self, response_text: str, retrieved_context: str) -> dict[str, Any]:
+        """The exact `messages.create` kwargs for a faithfulness call (also valid batch params)."""
         user = (
             f"<retrieved_context>\n{retrieved_context.strip() or '(no context retrieved)'}"
             f"\n</retrieved_context>\n\n"
             f"<response>\n{response_text}\n</response>"
         )
-        return self._score(_FAITHFULNESS_SYSTEM, user, JudgeScore)
+        return self._request(_FAITHFULNESS_SYSTEM, user, JudgeScore)
+
+    def faithfulness(self, response_text: str, retrieved_context: str) -> JudgeScore:
+        return self._call(self.faithfulness_request(response_text, retrieved_context), JudgeScore)
 
     def relevance(self, response_text: str, query: str) -> JudgeScore:
-        user = (
-            f"<query>\n{query}\n</query>\n\n"
-            f"<response>\n{response_text}\n</response>"
-        )
-        return self._score(_RELEVANCE_SYSTEM, user, JudgeScore)
+        user = f"<query>\n{query}\n</query>\n\n<response>\n{response_text}\n</response>"
+        return self._call(self._request(_RELEVANCE_SYSTEM, user, JudgeScore), JudgeScore)
 
     def refusal(self, response_text: str, query: str) -> RefusalVerdict:
-        user = (
-            f"<query>\n{query}\n</query>\n\n"
-            f"<response>\n{response_text}\n</response>"
-        )
-        return self._score(_REFUSAL_SYSTEM, user, RefusalVerdict)
+        user = f"<query>\n{query}\n</query>\n\n<response>\n{response_text}\n</response>"
+        return self._call(self._request(_REFUSAL_SYSTEM, user, RefusalVerdict), RefusalVerdict)
 
     def pushback(self, response_text: str, false_premise: str) -> PushbackVerdict:
         user = (
             f"<false_premise>\n{false_premise}\n</false_premise>\n\n"
             f"<response>\n{response_text}\n</response>"
         )
-        return self._score(_PUSHBACK_SYSTEM, user, PushbackVerdict)
+        return self._call(self._request(_PUSHBACK_SYSTEM, user, PushbackVerdict), PushbackVerdict)
 
     # ---------- internals ----------
 
-    def _score(self, system_prompt: str, user_content: str, schema: type[T]) -> T:
+    def _request(
+        self, system_prompt: str, user_content: str, schema: type[BaseModel]
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": [
+                {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}
+            ],
+            "messages": [{"role": "user", "content": user_content}],
+            "output_config": {
+                "format": {"type": "json_schema", "schema": output_schema(schema)}
+            },
+        }
+        if self.thinking == "disabled":
+            params["thinking"] = {"type": "disabled"}
+        return params
+
+    def _call(self, params: dict[str, Any], schema: type[T]) -> T:
         try:
-            response: Any = self._client.messages.parse(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=[
-                    {
-                        "type": "text",
-                        "text": system_prompt,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[{"role": "user", "content": user_content}],
-                output_format=schema,
-            )
+            message: Any = self._client.messages.create(**params)
         except anthropic.APIError as exc:
             raise JudgeError(f"judge API call failed: {exc}") from exc
+        self._record_usage(getattr(message, "usage", None))
+        return parse_judge_message(message, schema)
 
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            self.cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
-            self.cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
-
-        parsed = getattr(response, "parsed_output", None)
-        if parsed is None:
-            raise JudgeError("judge returned an unparseable response (no parsed_output)")
-        if not isinstance(parsed, schema):
-            raise JudgeError(
-                f"judge returned wrong type: expected {schema.__name__}, got {type(parsed).__name__}"
-            )
-        return parsed
+    def _record_usage(self, usage: Any) -> None:
+        if usage is None:
+            return
+        self.cache_creation_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
+        self.cache_read_tokens += getattr(usage, "cache_read_input_tokens", 0) or 0
+        self.input_tokens += getattr(usage, "input_tokens", 0) or 0
+        self.output_tokens += getattr(usage, "output_tokens", 0) or 0
