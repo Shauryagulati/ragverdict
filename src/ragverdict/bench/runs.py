@@ -39,8 +39,10 @@ PARAPHRASES: dict[str, tuple[str, bool]] = {
 
 # Measured per-call costs used for pre-run estimates (spike, 2026-09-22).
 JEV_COST_PER_CALL = 0.00005
-CLAUDE_BATCH_COST_PER_CALL = 0.00215  # thinking disabled
-CLAUDE_BATCH_THINKING_COST_PER_CALL = 0.008
+# Claude batch, measured 2026-09-22: real batch smoke 5/5 ok, ~$0.0025/example at batch
+# price with cache reads working (Ruling 23).
+CLAUDE_BATCH_COST_PER_CALL = 0.0026  # thinking disabled; measured 2026-09-22
+CLAUDE_BATCH_THINKING_COST_PER_CALL = 0.009  # measured 2026-09-22
 CLAUDE_LIVE_COST_PER_CALL = 0.0043
 # Live smoke test, 2026-09-22 (measured per-call cost; supersedes the brief's older estimate).
 DEEPSEEK_COST_PER_CALL = 0.00036
@@ -99,12 +101,13 @@ RUNS: dict[str, RunSpec] = {
     # R4 — Jev paraphrase robustness, full test set
     **{f"jev-para-{p}": RunSpec(f"jev-para-{p}", "test", None, 0, "jev", paraphrase=p)
        for p in "ABCDEP"},
-    # R5 — flip test, 210 test examples x 3 repeats
-    "jev-flip": RunSpec("jev-flip", "test", 70, 13, "jev", repeats=3),
-    "claude-flip": RunSpec("claude-flip", "test", 70, 13, "claude_batch", repeats=3,
+    # R5 — flip test, 102 test examples x 3 repeats (Ruling 23 budget resize); same seed 13
+    # so both judges get the same sample
+    "jev-flip": RunSpec("jev-flip", "test", 34, 13, "jev", repeats=3),
+    "claude-flip": RunSpec("claude-flip", "test", 34, 13, "claude_batch", repeats=3,
                            cost_per_call=CLAUDE_BATCH_COST_PER_CALL),
-    # R6 — Claude thinking on, 300 test examples
-    "claude-thinking": RunSpec("claude-thinking", "test", 100, 17, "claude_batch",
+    # R6 — Claude thinking on, 150 test examples (Ruling 23 budget resize)
+    "claude-thinking": RunSpec("claude-thinking", "test", 50, 17, "claude_batch",
                                thinking="model_default",
                                cost_per_call=CLAUDE_BATCH_THINKING_COST_PER_CALL),
     # R7 — Claude live latency sample, 102 test examples

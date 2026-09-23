@@ -43,8 +43,22 @@ def test_verifier_matches_summary(tmp_path: Path) -> None:
             jev_score = (0.2 + 0.01 * i) if hallucinated else (0.6 + 0.02 * i)
         store.append(Prediction(run="jev", example_id=str(i), repeat=0,
                                 score=jev_score, cost_usd=0.00005))
-        store.append(Prediction(run="claude", example_id=str(i), repeat=0,
-                                score=0.5 if (hallucinated or i == 1) else 1.0, cost_usd=0.002))
+        # untuned headline Jev: a different score profile so its threshold (0.5) matters
+        store.append(Prediction(run="jev-para-A", example_id=str(i), repeat=0,
+                                score=0.45 if (hallucinated or i in (2, 4)) else 0.8,
+                                cost_usd=0.00004))
+        claude = (0.5, 1, 2) if (hallucinated or i == 1) else (1.0, 2, 2)
+        if i == 3:
+            # hallucinated; score 1.0 but the claim counts show an unsupported claim, so the
+            # pre-registered LLM rule flags it (the old `score < 1.0` rule would not)
+            claude = (1.0, 2, 3)
+        store.append(Prediction(run="claude", example_id=str(i), repeat=0, score=claude[0],
+                                supported_claims=claude[1], total_claims=claude[2],
+                                cost_usd=0.002))
+        if i != 5:  # deepseek never scored id 5 -> the headline cohort drops it
+            store.append(Prediction(run="deepseek", example_id=str(i), repeat=0,
+                                    score=0.5 if i % 2 == 0 else 1.0, supported_claims=1,
+                                    total_claims=1 if i % 2 else 2, cost_usd=0.0004))
     frozen_path = REPO / "bench" / "frozen_config.json"
     frozen, sha = load_frozen(frozen_path)
     summary = build_summary({"test": load_examples(data, split="test")}, store, frozen, sha)
@@ -56,3 +70,33 @@ def test_verifier_matches_summary(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "VERIFIED" in result.stdout
+    for check in ("claude.f1", "claude.inconsistency", "jev_untuned.f1", "headline.n",
+                  "headline.claude.f1", "headline.h1_diff"):
+        assert check in result.stdout, result.stdout
+    assert summary["headline"]["cohort"]["n"] == 13
+
+
+def test_verifier_flags_a_tampered_summary(tmp_path: Path) -> None:
+    """The verifier must fail when summary.json disagrees with the raw predictions."""
+    data = tmp_path / "data"
+    data.mkdir()
+    _dataset(data)
+    out = tmp_path / "out"
+    store = PredictionStore(out)
+    for i in range(14):
+        hallucinated = i % 3 == 0
+        store.append(Prediction(run="claude", example_id=str(i), repeat=0,
+                                score=1.0, supported_claims=1 if hallucinated else 2,
+                                total_claims=2, cost_usd=0.002))
+    frozen_path = REPO / "bench" / "frozen_config.json"
+    frozen, sha = load_frozen(frozen_path)
+    summary = build_summary({"test": load_examples(data, split="test")}, store, frozen, sha)
+    assert summary["judges"]["claude"]["f1"]["value"] == 1.0  # claims catch every positive
+    summary["judges"]["claude"]["f1"]["value"] = 0.0  # what the old score<1 rule would report
+    (out / "summary.json").write_text(json.dumps(summary))
+    result = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "verify_bench.py"), "--out", str(out),
+         "--data", str(data), "--frozen", str(frozen_path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 1 and "MISMATCH" in result.stdout

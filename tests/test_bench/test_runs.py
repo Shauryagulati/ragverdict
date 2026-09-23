@@ -56,3 +56,19 @@ def test_select_examples_task_filter_restricts_to_qa(tmp_path: Path) -> None:
 def test_select_examples_without_task_filter_keeps_every_task(tmp_path: Path) -> None:
     exs = select_examples(RUNS["jev"], _write_dataset(tmp_path))
     assert {e.id for e in exs} == {"1", "2"}
+
+
+def test_budget_resized_runs_ruling_23() -> None:
+    """Measured 2026-09-22 batch costs; flip 34/task x 3 repeats on a shared seed, thinking 50/task."""
+    from ragverdict.bench.runs import (
+        CLAUDE_BATCH_COST_PER_CALL,
+        CLAUDE_BATCH_THINKING_COST_PER_CALL,
+    )
+
+    assert CLAUDE_BATCH_COST_PER_CALL == 0.0026
+    assert CLAUDE_BATCH_THINKING_COST_PER_CALL == 0.009
+    for name in ("jev-flip", "claude-flip"):
+        assert RUNS[name].per_task == 34 and RUNS[name].repeats == 3 and RUNS[name].seed == 13
+    assert RUNS["claude-thinking"].per_task == 50
+    assert RUNS["claude-thinking"].cost_per_call == 0.009
+    assert RUNS["claude"].cost_per_call == 0.0026

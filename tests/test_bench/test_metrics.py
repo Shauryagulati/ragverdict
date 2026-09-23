@@ -19,6 +19,7 @@ from ragverdict.bench.metrics import (
     precision_at_recall,
     recall_at_precision,
     reliability,
+    threshold_at_fpr,
     wilson_ci,
 )
 
@@ -165,6 +166,47 @@ def test_pr_curve_and_operating_points() -> None:
     assert recall_at_precision(curve, 0.9) == 1.0
     assert precision_at_recall(curve, 1.0) == 1.0
     assert recall_at_precision(pr_curve([0.9, 0.1], [T, F]), 0.99) is None
+
+
+def test_pr_curve_with_ties_matches_brute_force() -> None:
+    # Tied scores must move together: at t=0.4 both 0.3s (one T, one F) are flagged.
+    p = [0.3, 0.3, 0.1, 0.7, 0.7, 0.9]
+    y = [T, F, T, F, T, F]
+    curve = pr_curve(p, y)
+    assert [round(c["threshold"], 9) for c in curve] == [0.2, 0.5, 0.8, 0.900000001]
+    # t=0.2 flags {0.1}: tp=1 fp=0; t=0.5 flags {0.1,0.3,0.3}: tp=2 fp=1;
+    # t=0.8 adds {0.7,0.7}: tp=3 fp=2; last flags everything: tp=3 fp=3.
+    assert [(c["precision"], c["recall"]) for c in curve] == [
+        (1.0, 1 / 3), (2 / 3, 2 / 3), (3 / 5, 1.0), (0.5, 1.0),
+    ]
+    for c in curve:  # identical to classification() at every threshold
+        m = classification([v < c["threshold"] for v in p], y)
+        assert (c["precision"], c["recall"]) == (m["precision"], m["recall"])
+
+
+def test_pr_curve_without_positives_has_zero_recall() -> None:
+    assert [c["recall"] for c in pr_curve([0.2, 0.8], [F, F])] == [0.0, 0.0]
+
+
+def test_threshold_at_fpr_hand_computed() -> None:
+    # sorted: .1T .2F .3T .5F .6T .7F .8T .9F; midpoints .15 .25 .4 .55 .65 .75 .85, then .9+1e-9
+    # FPR (4 negatives) at each:            0   1/4 1/4 2/4 2/4 3/4 3/4, 1
+    p = [0.1, 0.2, 0.3, 0.5, 0.6, 0.7, 0.8, 0.9]
+    y = [T, F, T, F, T, F, T, F]
+    assert threshold_at_fpr(p, y, 0.25) == pytest.approx(0.4)  # largest t with FPR <= 1/4
+    assert threshold_at_fpr(p, y, 0.0) == pytest.approx(0.15)
+    assert threshold_at_fpr(p, y, 0.6) == pytest.approx(0.65)
+    assert threshold_at_fpr(p, y, 1.0) == pytest.approx(0.9 + 1e-9)
+
+
+def test_threshold_at_fpr_none_when_even_lowest_threshold_exceeds() -> None:
+    # the lowest score is a negative, so every threshold flags >= 1 of 2 negatives (FPR >= 1/2)
+    assert threshold_at_fpr([0.1, 0.5, 0.9], [F, T, F], 0.25) is None
+
+
+def test_threshold_at_fpr_needs_negatives() -> None:
+    with pytest.raises(ValueError):
+        threshold_at_fpr([0.1, 0.5], [T, T], 0.1)
 
 
 def test_best_f1_threshold() -> None:

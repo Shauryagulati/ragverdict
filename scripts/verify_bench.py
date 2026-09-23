@@ -1,8 +1,8 @@
 """Independently recompute headline benchmark numbers from raw files with scikit-learn.
 
 Deliberately imports nothing from ragverdict.bench: it re-parses RAGTruth, re-applies
-the label and filter rules, and recomputes metrics with sklearn/numpy. Any
-disagreement with summary.json beyond 1e-3 fails the check.
+the label and filter rules and the pre-registered verdict rules, and recomputes metrics
+with sklearn/numpy. Any disagreement with summary.json beyond 1e-3 fails the check.
 """
 
 from __future__ import annotations
@@ -10,12 +10,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from sklearn.metrics import f1_score, roc_auc_score
 
 TOL = 1e-3
+LLM_RUNS = ("claude", "deepseek", "glm")
+Row = dict[str, float]
 
 
 def load_labels(data: Path) -> dict[str, bool]:
@@ -28,9 +32,12 @@ def load_labels(data: Path) -> dict[str, bool]:
     return labels
 
 
-def load_scores(out: Path, run: str) -> dict[str, tuple[float, float]]:
-    rows: dict[str, tuple[float, float]] = {}
+def load_scores(out: Path, run: str) -> dict[str, Row]:
+    """Last repeat-0 row per example; a failed (score null) last row removes the example."""
+    rows: dict[str, Row] = {}
     path = out / "raw" / f"{run}.jsonl"
+    if not path.exists():
+        return rows
     with path.open() as fh:
         for line in fh:
             p = json.loads(line)
@@ -38,8 +45,26 @@ def load_scores(out: Path, run: str) -> dict[str, tuple[float, float]]:
                 if p["score"] is None:
                     rows.pop(p["example_id"], None)
                 else:
-                    rows[p["example_id"]] = (float(p["score"]), float(p["cost_usd"]))
+                    rows[p["example_id"]] = {
+                        "score": float(p["score"]),
+                        "cost": float(p["cost_usd"]),
+                        "supported": float(p.get("supported_claims", 0)),
+                        "total": float(p.get("total_claims", 0)),
+                    }
     return rows
+
+
+def llm_flags(row: Row) -> bool:
+    """Pre-registered LLM verdict: hallucinated iff score < 1 or a claim is unsupported."""
+    return row["score"] < 1.0 or (row["total"] > 0 and row["supported"] < row["total"])
+
+
+def llm_inconsistent(row: Row) -> bool:
+    return (row["score"] < 1.0) != (row["total"] > 0 and row["supported"] < row["total"])
+
+
+def jev_flags(threshold: float) -> Callable[[Row], bool]:
+    return lambda row: row["score"] < threshold
 
 
 def ece(probs: np.ndarray, outcomes: np.ndarray, n_bins: int = 10) -> float:
@@ -50,6 +75,11 @@ def ece(probs: np.ndarray, outcomes: np.ndarray, n_bins: int = 10) -> float:
         if mask.any():
             total += mask.mean() * abs(probs[mask].mean() - outcomes[mask].mean())
     return float(total)
+
+
+def f1s(y: np.ndarray, preds: np.ndarray) -> tuple[float, float]:
+    return (float(f1_score(y, preds, zero_division=0)),
+            float(f1_score(y, preds, average="macro", zero_division=0)))
 
 
 def main() -> int:
@@ -64,30 +94,56 @@ def main() -> int:
     labels = load_labels(args.data)
     checks: list[tuple[str, float, float]] = []
 
-    rules = {"jev": lambda s: s < frozen["jev_threshold"], "claude": lambda s: s < 1.0,
-             "deepseek": lambda s: s < 1.0, "glm": lambda s: s < 1.0}
-    for run, rule in rules.items():
-        if run not in summary["judges"]:
+    # summary judge name -> (raw run, verdict rule, probabilistic)
+    judges: dict[str, tuple[str, Callable[[Row], bool], bool]] = {
+        "jev": ("jev", jev_flags(frozen["jev_threshold"]), True),
+        "jev_untuned": ("jev-para-A", jev_flags(0.5), True),
+        **{run: (run, llm_flags, False) for run in LLM_RUNS},
+    }
+    for name, (run, rule, probabilistic) in judges.items():
+        if name not in summary["judges"]:
             continue
         scores = load_scores(args.out, run)
         ids = [i for i in labels if i in scores]
         y = np.array([labels[i] for i in ids])
-        s = np.array([scores[i][0] for i in ids])
-        block = summary["judges"][run]
-        checks.append((f"{run}.n", float(len(ids)), float(block["n"])))
-        checks.append((f"{run}.auroc", float(roc_auc_score(y, 1 - s)), block["auroc"]["value"]))
-        preds = np.array([rule(v) for v in s])
-        checks.append((f"{run}.f1", float(f1_score(y, preds, zero_division=0)), block["f1"]["value"]))
-        checks.append((f"{run}.macro_f1", float(f1_score(y, preds, average="macro", zero_division=0)),
-                       block["macro_f1"]["value"]))
-        checks.append((f"{run}.cost_total", float(sum(scores[i][1] for i in ids)), block["cost_usd_total"]))
-        if run == "jev":
-            checks.append((f"{run}.ece", ece(1 - s, y.astype(float)), block["ece"]))
+        s = np.array([scores[i]["score"] for i in ids])
+        block = summary["judges"][name]
+        checks.append((f"{name}.n", float(len(ids)), float(block["n"])))
+        checks.append((f"{name}.auroc", float(roc_auc_score(y, 1 - s)), block["auroc"]["value"]))
+        f1, macro = f1s(y, np.array([rule(scores[i]) for i in ids]))
+        checks.append((f"{name}.f1", f1, block["f1"]["value"]))
+        checks.append((f"{name}.macro_f1", macro, block["macro_f1"]["value"]))
+        checks.append((f"{name}.cost_total", float(sum(scores[i]["cost"] for i in ids)),
+                       block["cost_usd_total"]))
+        if probabilistic:
+            checks.append((f"{name}.ece", ece(1 - s, y.astype(float)), block["ece"]))
+        else:
+            rate = float(np.mean([llm_inconsistent(scores[i]) for i in ids]))
+            checks.append((f"{name}.inconsistency", rate, block["verdict_inconsistency_rate"]))
+
+    headline: dict[str, Any] | None = summary.get("headline")
+    if headline is not None:
+        # Headline cohort: good test examples scored by jev-para-A and every LLM run with data.
+        para_a = load_scores(args.out, "jev-para-A")
+        llms = {run: sc for run in LLM_RUNS if (sc := load_scores(args.out, run))}
+        cohort = [i for i in labels if i in para_a and all(i in sc for sc in llms.values())]
+        y = np.array([labels[i] for i in cohort])
+        checks.append(("headline.n", float(len(cohort)), float(headline["cohort"]["n"])))
+        verdicts = {"jev_untuned": np.array([para_a[i]["score"] < 0.5 for i in cohort])}
+        verdicts |= {run: np.array([llm_flags(sc[i]) for i in cohort]) for run, sc in llms.items()}
+        for name, preds in verdicts.items():
+            f1, macro = f1s(y, preds)
+            block = headline["judges"][name]
+            checks.append((f"headline.{name}.f1", f1, block["f1"]["value"]))
+            checks.append((f"headline.{name}.macro_f1", macro, block["macro_f1"]["value"]))
+        if "claude" in verdicts:
+            diff = f1s(y, verdicts["jev_untuned"])[0] - f1s(y, verdicts["claude"])[0]
+            checks.append(("headline.h1_diff", diff, headline["h1"]["diff"]))
 
     mismatches = [(name, mine, theirs) for name, mine, theirs in checks if abs(mine - theirs) > TOL]
     for name, mine, theirs in checks:
         flag = "MISMATCH" if (name, mine, theirs) in mismatches else "ok"
-        print(f"{flag:8} {name:20} independent={mine:.6f} summary={theirs:.6f}")
+        print(f"{flag:8} {name:28} independent={mine:.6f} summary={theirs:.6f}")
     if mismatches:
         return 1
     print("VERIFIED")

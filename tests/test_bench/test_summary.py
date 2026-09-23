@@ -59,7 +59,8 @@ def test_perfect_jev_and_claude(tmp_path: Path) -> None:
     assert set(j["by_task"]) == {"QA", "Summary", "Data2txt"}
     assert j["by_task"]["QA"]["auroc_ci95"] is not None
     assert "recall_ci95" in j["recall_by_severity"]["evident"]
-    assert summary["judges"]["jev_untuned"]["n"] == 8
+    # untuned Jev is run jev-para-A @ 0.5 (spec §6.6 item 1), never run "jev" at 0.5
+    assert "jev_untuned" not in summary["judges"]
     assert c["frac_score_eq_1"] == pytest.approx(0.5)
     assert j["cost_usd_per_1m"] == pytest.approx(50.0)
     assert j["latency_s"]["p50"] == pytest.approx(0.4)  # all rows share latency_s=0.4
@@ -266,7 +267,8 @@ def test_partial_progress_only_jev_present(tmp_path: Path) -> None:
         store.append(Prediction(run="jev", example_id=e.id, repeat=0,
                                 score=(0.1 if e.hallucinated else 0.9), cost_usd=0.00005))
     summary = build_summary({"test": exs}, store, FROZEN, "sha")
-    assert set(summary["judges"]) == {"jev", "jev_untuned"}
+    assert set(summary["judges"]) == {"jev"}
+    assert summary["headline"] is None
     assert summary["head_to_head"] is None
     assert summary["cascade"] is None
     assert summary["agreement"] is None
@@ -285,6 +287,9 @@ def test_paraphrase_and_thinking_have_bootstrap_cis(tmp_path: Path) -> None:
         store.append(Prediction(run="claude-thinking", example_id=e.id, repeat=0,
                                 score=claude[e.id], cost_usd=0.008))
     summary = build_summary({"test": exs}, store, FROZEN, "sha")
+
+    assert summary["judges"]["jev_untuned"]["run"] == "jev-para-A"
+    assert summary["judges"]["jev_untuned"]["n"] == 8
 
     para = summary["paraphrases"]["A"]
     assert para["auroc"]["value"] == pytest.approx(1.0)

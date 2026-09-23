@@ -214,13 +214,55 @@ def _thresholds(p_supported: Sequence[float]) -> list[float]:
     return [(a + b) / 2 for a, b in pairwise(values)] + [values[-1] + 1e-9]
 
 
-def pr_curve(p_supported: Sequence[float], labels: Sequence[bool]) -> list[dict[str, float]]:
-    """Precision/recall for 'hallucinated iff p < t' at every distinct threshold."""
-    out: list[dict[str, float]] = []
-    for t in _thresholds(p_supported):
-        m = classification([p < t for p in p_supported], labels)
-        out.append({"threshold": t, "precision": m["precision"], "recall": m["recall"]})
+def _flag_counts(
+    p_supported: Sequence[float], labels: Sequence[bool]
+) -> list[tuple[float, int, int]]:
+    """(t, tp, fp) for 'hallucinated iff p < t' at every threshold of `_thresholds`.
+
+    One sort plus running sums (O(n log n)) instead of re-classifying all n examples at
+    each of ~n thresholds (O(n^2)) — the bootstraps call this thousands of times. Each
+    threshold sits just above one distinct score v, so it flags exactly the scores <= v.
+    """
+    per_value: dict[float, list[int]] = {}  # score -> [n positives, n negatives]
+    for p, y in zip(p_supported, labels, strict=True):
+        per_value.setdefault(p, [0, 0])[0 if y else 1] += 1
+    values = sorted(per_value)
+    out: list[tuple[float, int, int]] = []
+    tp = fp = 0
+    for t, v in zip(_thresholds(values), values, strict=True):
+        tp += per_value[v][0]
+        fp += per_value[v][1]
+        out.append((t, tp, fp))
     return out
+
+
+def pr_curve(p_supported: Sequence[float], labels: Sequence[bool]) -> list[dict[str, float]]:
+    """Precision/recall for 'hallucinated iff p < t' at every distinct threshold.
+
+    Same numbers as `classification` at each threshold: every threshold flags >= 1 example,
+    so precision is always defined; recall is 0.0 when there are no positives."""
+    n_pos = sum(labels)
+    return [
+        {"threshold": t, "precision": tp / (tp + fp), "recall": tp / n_pos if n_pos else 0.0}
+        for t, tp, fp in _flag_counts(p_supported, labels)
+    ]
+
+
+def threshold_at_fpr(
+    p_supported: Sequence[float], labels: Sequence[bool], max_fpr: float
+) -> float | None:
+    """Largest `pr_curve` threshold whose false-positive rate is <= `max_fpr`, or None if
+    even the lowest threshold exceeds it. FPR only grows with t, so this is the most
+    permissive (highest-recall) threshold that stays within the FPR budget."""
+    n_neg = len(labels) - sum(labels)
+    if n_neg == 0:
+        raise ValueError("FPR needs at least one negative")
+    best: float | None = None
+    for t, _tp, fp in _flag_counts(p_supported, labels):
+        if fp / n_neg > max_fpr:
+            break
+        best = t
+    return best
 
 
 def recall_at_precision(curve: list[dict[str, float]], target: float) -> float | None:
