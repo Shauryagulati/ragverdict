@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class ConfigError(Exception):
@@ -36,10 +36,22 @@ AdapterConfig = PythonAdapterConfig | HttpAdapterConfig
 class JudgeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["anthropic"] = "anthropic"
+    provider: Literal["anthropic", "jev", "cascade"] = "anthropic"
     model: str = "claude-sonnet-4-6"
+    thinking: Literal["model_default", "disabled"] = "model_default"
     max_concurrency: int = 4
     fixtures_path: Path | None = None
+    jev_model: str = "typesafe/jev-1.13"
+    jev_base_url: str = "https://openrouter.ai/api"
+    cascade_band: tuple[float, float] = (0.3, 0.7)
+
+    @field_validator("cascade_band")
+    @classmethod
+    def _band_in_range(cls, band: tuple[float, float]) -> tuple[float, float]:
+        lo, hi = band
+        if not 0.0 <= lo < hi <= 1.0:
+            raise ValueError(f"cascade_band must satisfy 0 <= lo < hi <= 1, got {band}")
+        return band
 
 
 class Thresholds(BaseModel):

@@ -12,6 +12,7 @@ from ragverdict.config import Config, load_config
 from ragverdict.evaluators import EVALUATORS
 from ragverdict.evaluators.base import TestResult, Verdict
 from ragverdict.judges.base import Judge, JudgeError
+from ragverdict.judges.factory import build_judge
 from ragverdict.judges.llm_judge import LLMJudge
 
 # Sentinel for "auto-init the judge from config" (vs. None which means "no judge").
@@ -94,11 +95,9 @@ class Runner:
         return results, exit_code
 
     def _maybe_init_judge(self) -> Judge | None:
-        """Best-effort judge instantiation. Returns None if no API key is set."""
-        if self.config.judge.provider != "anthropic":
-            return None
+        """Best-effort judge instantiation. Returns None if credentials are missing."""
         try:
-            return LLMJudge(model=self.config.judge.model)
+            return build_judge(self.config.judge)
         except JudgeError as exc:
             print(
                 f"warning: {exc}\nproceeding without judge — WEAK verdicts and "

@@ -80,3 +80,46 @@ def test_validation_error_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError, match="validation failed"):
         load_config(path)
+
+
+def test_judge_defaults_unchanged(tmp_path: Path) -> None:
+    cfg = load_config(_write(tmp_path, """
+        adapter: {type: python, module: m, class: C}
+    """))
+    assert cfg.judge.provider == "anthropic"
+    assert cfg.judge.model == "claude-sonnet-4-6"
+    assert cfg.judge.thinking == "model_default"
+    assert cfg.judge.jev_model == "typesafe/jev-1.13"
+    assert cfg.judge.jev_base_url == "https://openrouter.ai/api"
+    assert cfg.judge.cascade_band == (0.3, 0.7)
+
+
+def test_cascade_judge_config_parses(tmp_path: Path) -> None:
+    cfg = load_config(_write(tmp_path, """
+        adapter: {type: python, module: m, class: C}
+        judge:
+          provider: cascade
+          model: claude-sonnet-5
+          thinking: disabled
+          cascade_band: [0.2, 0.8]
+    """))
+    assert cfg.judge.provider == "cascade"
+    assert cfg.judge.thinking == "disabled"
+    assert cfg.judge.cascade_band == (0.2, 0.8)
+
+
+@pytest.mark.parametrize("band", ["[0.8, 0.2]", "[-0.1, 0.5]", "[0.5, 1.5]"])
+def test_invalid_cascade_band_rejected(tmp_path: Path, band: str) -> None:
+    with pytest.raises(ConfigError, match="cascade_band"):
+        load_config(_write(tmp_path, f"""
+            adapter: {{type: python, module: m, class: C}}
+            judge: {{provider: cascade, cascade_band: {band}}}
+        """))
+
+
+def test_unknown_provider_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, """
+            adapter: {type: python, module: m, class: C}
+            judge: {provider: openai}
+        """))
