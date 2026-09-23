@@ -1,45 +1,45 @@
 {
   "jev_model": "typesafe/jev-1.13",
-  "jev_paraphrase": "B",
-  "jev_threshold": 0.165,
+  "jev_paraphrase": "A",
+  "jev_threshold": 0.5,
   "claude_model": "claude-sonnet-5",
   "claude_rule": "score<1.0 or supported<total",
   "cascade_band": [
-    0.065,
-    0.265
+    0.3,
+    0.7
   ],
   "cascade_band_sweep": [
     [
-      0.115,
-      0.215
+      0.45,
+      0.55
     ],
     [
-      0.065,
-      0.265
+      0.4,
+      0.6
     ],
     [
-      0.015,
-      0.315
+      0.35,
+      0.65
     ],
     [
-      0.0,
-      0.365
+      0.3,
+      0.7
     ],
     [
-      0.0,
-      0.415
+      0.25,
+      0.75
     ],
     [
-      0.0,
-      0.465
+      0.2,
+      0.8
     ],
     [
-      0.0,
-      0.565
+      0.1,
+      0.9
     ]
   ],
   "dataset_commit": "c103204b9ce28d6bbad859304bf30de72b8ed8fe",
   "bootstrap_resamples": 1000,
   "bootstrap_seed": 0,
-  "registered": true
+  "registered": false
 }

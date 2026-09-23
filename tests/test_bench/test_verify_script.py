@@ -62,7 +62,9 @@ def _full_store(out: Path) -> PredictionStore:
     return store
 
 
-FROZEN_PATH = REPO / "bench" / "frozen_config.json"
+# A fixed fixture config (not the repo's pre-registered bench/frozen_config.json), so the
+# boundary examples above stay exactly on the Jev threshold (0.5) whatever gets frozen.
+FROZEN_PATH = Path(__file__).parent / "fixtures" / "verify_frozen_config.json"
 
 
 def _summarize(data: Path, store: PredictionStore) -> dict[str, Any]:
