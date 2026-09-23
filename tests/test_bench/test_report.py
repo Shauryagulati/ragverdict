@@ -8,6 +8,7 @@ included — rather than drifting from it.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -183,3 +184,69 @@ def test_export_missing_audit_file_is_empty_list(tmp_path: Path) -> None:
     missing = tmp_path / "no-such-audit.json"
     data = json.loads(export([], store, summary, 0.5, tmp_path / "docs", missing).read_text())
     assert data["audit"] == []
+
+
+def test_headline_table_includes_macro_f1_value_and_ci(tmp_path: Path) -> None:
+    """Each headline judge row carries macro_f1 (value + 95% CI) straight from
+    summary["headline"]["judges"][key]["macro_f1"], alongside the existing f1/auroc fields."""
+    summary = _full_summary(tmp_path / "summary_store")
+    store = _full_store(tmp_path / "cases_store")
+    data = json.loads(export(_examples(), store, summary, 0.5, tmp_path / "docs").read_text())
+    assert data["headline"]["is_headline"] is True
+    for key, row in data["headline"]["judges"].items():
+        expected = summary["headline"]["judges"][key]["macro_f1"]
+        assert row["macro_f1"] == expected
+        assert "value" in row["macro_f1"] and "ci95" in row["macro_f1"]
+        assert "f1" in row  # existing field kept
+
+
+def test_headline_table_partial_run_includes_macro_f1(tmp_path: Path) -> None:
+    """On a partial run (only run "jev" scored, no untuned "jev-para-A" yet), the headline
+    cohort is empty so _headline_table falls back to each judge's own block in
+    summary["judges"] — macro_f1 must still be present there too."""
+    store = PredictionStore(tmp_path / "store")
+    for e in _examples():
+        jev_p = 0.1 if e.hallucinated else 0.9
+        store.append(Prediction(run="jev", example_id=e.id, repeat=0, score=jev_p,
+                                cost_usd=0.00005))
+    summary = build_summary({"test": _examples()}, store, FROZEN, "sha")
+    assert summary["headline"] is None
+    data = json.loads(export(_examples(), store, summary, 0.5, tmp_path / "docs").read_text())
+    assert data["headline"]["is_headline"] is False
+    row = data["headline"]["judges"]["jev"]
+    assert row["macro_f1"] == summary["judges"]["jev"]["macro_f1"]
+    assert "value" in row["macro_f1"] and "ci95" in row["macro_f1"]
+
+
+def test_export_truncates_sources_past_size_limit(tmp_path: Path) -> None:
+    """A tiny max_bytes forces truncation: each case's source is cut to 4,000 chars with a
+    "… [truncated]" suffix, response stays untruncated, and sources_truncated is recorded."""
+    huge_source = "x" * 20_000
+    exs = [
+        replace(_ex(1), source=huge_source),  # hallucinated
+        replace(_ex(2), source=huge_source),  # clean
+    ]
+    summary = _full_summary(tmp_path / "summary_store")
+    store = PredictionStore(tmp_path / "cases_store")
+    # id 1: jev says halluc, claude fully supported -> disagree. id 2: jev says halluc,
+    # claude fully supported (clean) -> disagree too. Both land in cases.
+    for eid, jev_score in (("1", 0.1), ("2", 0.1)):
+        store.append(Prediction(run=HEADLINE_JEV_RUN, example_id=eid, repeat=0, score=jev_score))
+        store.append(Prediction(run="claude", example_id=eid, repeat=0, score=1.0,
+                                supported_claims=2, total_claims=2, reasoning="fine"))
+    path = export(exs, store, summary, 0.5, tmp_path / "docs", max_bytes=2_000)
+    data = json.loads(path.read_text())
+    assert data["sources_truncated"] is True
+    assert len(data["cases"]) == 2
+    for case in data["cases"]:
+        assert case["source"] == "x" * 4_000 + "… [truncated]"
+        assert case["response"] == f"response text {case['id']}"
+
+
+def test_export_no_truncation_flag_false_when_under_limit(tmp_path: Path) -> None:
+    summary = _full_summary(tmp_path / "summary_store")
+    store = _full_store(tmp_path / "cases_store")
+    data = json.loads(export(_examples(), store, summary, 0.5, tmp_path / "docs").read_text())
+    assert data["sources_truncated"] is False
+    for case in data["cases"]:
+        assert not case["source"].endswith("… [truncated]")

@@ -39,6 +39,7 @@ def _headline_table(summary: dict[str, Any]) -> dict[str, Any]:
                 continue
             rows[key] = {
                 "run": block["run"], "n": block["n"], "f1": block["f1"],
+                "macro_f1": block["macro_f1"],
                 "auroc": cost_block["auroc"], "cost_usd_per_1k": cost_block["cost_usd_per_1k"],
             }
     else:
@@ -48,6 +49,7 @@ def _headline_table(summary: dict[str, Any]) -> dict[str, Any]:
                 continue
             rows[key] = {
                 "run": block["run"], "n": block["n"], "f1": block["f1"],
+                "macro_f1": block["macro_f1"],
                 "auroc": block["auroc"], "cost_usd_per_1k": block["cost_usd_per_1k"],
             }
     return {
@@ -92,6 +94,10 @@ def _cases(
     return cases
 
 
+SOURCE_TRUNCATE_CHARS = 4_000
+TRUNCATION_SUFFIX = "… [truncated]"
+
+
 def export(
     examples: list[Example],
     store: PredictionStore,
@@ -99,18 +105,31 @@ def export(
     frozen_threshold: float,
     out_dir: Path,
     audit_path: Path | None = None,
+    max_bytes: int = 8_000_000,
 ) -> Path:
     audit = json.loads(audit_path.read_text()) if audit_path and audit_path.exists() else []
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "results.json"
-    path.write_text(json.dumps({
+    cases = _cases(examples, store, frozen_threshold)
+    payload: dict[str, Any] = {
         "n_test": summary.get("n_test"),
         "headline": _headline_table(summary),
         "hypotheses": summary.get("hypotheses"),
         "sensitivity": summary.get("sensitivity"),
         "qa_replication_pilot_rules": summary.get("qa_replication_pilot_rules"),
         "pilot_reference_qa": summary.get("pilot_reference_qa"),
-        "cases": _cases(examples, store, frozen_threshold),
+        "cases": cases,
         "audit": audit,
-    }))
+        "sources_truncated": False,
+    }
+    encoded = json.dumps(payload).encode()
+    if len(encoded) > max_bytes:
+        # Spans are highlighted in `response`, so only `source` (not `response`) is truncated.
+        for case in cases:
+            source = case["source"]
+            if len(source) > SOURCE_TRUNCATE_CHARS:
+                case["source"] = source[:SOURCE_TRUNCATE_CHARS] + TRUNCATION_SUFFIX
+        payload["sources_truncated"] = True
+        encoded = json.dumps(payload).encode()
+    path.write_bytes(encoded)
     return path
