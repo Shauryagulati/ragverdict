@@ -75,6 +75,13 @@ class RunSpec:
     thinking: Literal["model_default", "disabled"] = "disabled"
     cost_per_call: float = JEV_COST_PER_CALL
     chat: Literal["deepseek", "glm"] | None = None  # which ChatJudgeConfig, for judge="chat"
+    # "pilot": use the 2026-09-19 pilot's state keys {question, context, answer} instead of
+    # the standard {source, response} — see spec §6.6 item 9 / red-team A.9.
+    jev_state: Literal["standard", "pilot"] = "standard"
+    chat_prompt: Literal["ragverdict", "pilot"] = "ragverdict"  # judge="chat" only
+    # Restrict a full-test run (per_task=None) to one task; the pilot replication arm only
+    # covers the 900 QA test responses.
+    task_filter: Literal["QA"] | None = None
 
 
 RUNS: dict[str, RunSpec] = {
@@ -103,6 +110,17 @@ RUNS: dict[str, RunSpec] = {
     # R7 — Claude live latency sample, 102 test examples
     "claude-live": RunSpec("claude-live", "test", 34, 19, "claude_live",
                            cost_per_call=CLAUDE_LIVE_COST_PER_CALL),
+    # R9 — replication arm on QA-900 under the pilot's own rules (spec §6.6 item 9 /
+    # red-team A.9): the pilot's state keys for Jev, the pilot's binary prompt for the chat
+    # judges. Run LAST, only if budget remains (Ruling 20) — these are additive, not part of
+    # the primary comparison.
+    "jev-pilot-state": RunSpec("jev-pilot-state", "test", None, 0, "jev", paraphrase="P",
+                               jev_state="pilot", task_filter="QA"),
+    "deepseek-pilot": RunSpec("deepseek-pilot", "test", None, 0, "chat", chat="deepseek",
+                              chat_prompt="pilot", cost_per_call=DEEPSEEK_COST_PER_CALL,
+                              task_filter="QA"),
+    "glm-pilot": RunSpec("glm-pilot", "test", None, 0, "chat", chat="glm", chat_prompt="pilot",
+                        cost_per_call=GLM_COST_PER_CALL, task_filter="QA"),
 }
 
 
@@ -110,7 +128,10 @@ def select_examples(spec: RunSpec, data_dir: Path) -> list[Example]:
     if spec.per_task is None and spec.split == "test":
         # Full-test runs score all 2,700 responses so the pilot-rules replication (which keeps
         # incorrect_refusal/truncated rows) is possible; the primary analysis filters to "good".
-        return load_examples(data_dir, split="test", quality="all")
+        examples = load_examples(data_dir, split="test", quality="all")
+        if spec.task_filter is not None:
+            examples = [e for e in examples if e.task == spec.task_filter]
+        return examples
     examples = load_examples(data_dir, split=spec.split)
     if spec.per_task is None:
         return examples

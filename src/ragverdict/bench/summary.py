@@ -36,7 +36,13 @@ def _failure_split(
     ]
     return {
         "n_failed": len(kinds),
-        "n_failed_by_kind": {"transport": kinds.count("transport"), "judge": kinds.count("judge")},
+        "n_failed_by_kind": {
+            "transport": kinds.count("transport"),
+            "judge": kinds.count("judge"),
+            # rows with an error but no error_kind (pre-error_kind legacy rows) — counted here
+            # so the buckets always sum to n_failed.
+            "unknown": sum(1 for k in kinds if k not in ("transport", "judge")),
+        },
         "n_missing": sum(1 for e in ids if e.id not in all_rows),
     }
 

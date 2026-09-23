@@ -15,7 +15,14 @@ from rich.console import Console
 from rich.table import Table
 
 from ragverdict.bench import metrics
-from ragverdict.bench.openrouter_llm import DEEPSEEK_FLASH, GLM_FLASH, run_chat_judge
+from ragverdict.bench.openrouter_llm import (
+    DEEPSEEK_FLASH,
+    DEEPSEEK_FLASH_PILOT,
+    GLM_FLASH,
+    GLM_FLASH_PILOT,
+    ChatJudgeConfig,
+    run_chat_judge,
+)
 from ragverdict.bench.predict import (
     BudgetError,
     ClaudeBatchRunner,
@@ -25,7 +32,7 @@ from ragverdict.bench.predict import (
     run_claude_live,
     run_jev,
 )
-from ragverdict.bench.ragtruth import ensure_downloaded, load_examples
+from ragverdict.bench.ragtruth import Example, ensure_downloaded, load_examples
 from ragverdict.bench.runs import (
     PARAPHRASES,
     RUNS,
@@ -39,8 +46,10 @@ from ragverdict.judges.jev_judge import JevJudge
 from ragverdict.judges.llm_judge import LLMJudge
 
 FROZEN_PATH = Path("bench/frozen_config.json")  # run bench commands from the repo root
-# Test-split runs that don't pin their own paraphrase — they use the frozen one, so they
-# also need it registered before they're allowed to run.
+# Runs that don't pin their own paraphrase — they use the frozen one — so their invocation
+# metadata records which jev_paraphrase/frozen_sha256 they actually ran under (for
+# `_frozen_mismatch`). Registration itself gates every test-split run (see `_preflight`),
+# not just these two.
 _FROZEN_GATED_RUNS = ("jev", "jev-flip")
 console = Console()
 
@@ -61,8 +70,9 @@ def ragtruth() -> None:
 
 def _preflight(specs: list[RunSpec]) -> list[str]:
     """Everything that must be true before any run executes: credentials, a readable and
-    registered frozen config (for runs that depend on it). Budget is checked separately by
-    the caller, after this — nothing here needs network or disk access to the dataset."""
+    registered frozen config (for every test-split run — Ruling 21). Budget is checked
+    separately by the caller, after this — nothing here needs network or disk access to the
+    dataset."""
     problems: list[str] = []
     if any(spec.judge in ("jev", "chat") for spec in specs) and not os.environ.get(
         "OPENROUTER_API_KEY"
@@ -73,7 +83,10 @@ def _preflight(specs: list[RunSpec]) -> list[str]:
     ):
         problems.append("ANTHROPIC_API_KEY is not set (required for claude runs)")
 
-    gated = [spec for spec in specs if spec.name in _FROZEN_GATED_RUNS]
+    # Every test-split run is held to pre-registration — not just the runs that read the
+    # frozen paraphrase — so results can never be reported from an unregistered config.
+    # Train-split runs (tune-*) are exploratory and allowed before registration.
+    gated = [spec for spec in specs if spec.split == "test"]
     if gated:
         names = ", ".join(spec.name for spec in gated)
         if not FROZEN_PATH.exists():
@@ -138,6 +151,26 @@ def run(names: tuple[str, ...], out: Path, max_spend_usd: float) -> None:
         )
 
 
+def _load_meta_record(meta_path: Path, spec: RunSpec) -> dict[str, Any]:
+    """`{run, invocations}`. Tolerates a legacy flat meta file (`{"run", "n", "wall_clock_s"}`,
+    written before the invocations format existed) by converting it into one invocation
+    instead of raising."""
+    if not meta_path.exists():
+        return {"run": spec.name, "invocations": []}
+    raw: dict[str, Any] = json.loads(meta_path.read_text())
+    if "invocations" in raw:
+        return raw
+    return {
+        "run": raw.get("run", spec.name),
+        "invocations": [{
+            "started_at": raw.get("started_at", ""),
+            "wall_clock_s": raw.get("wall_clock_s", 0.0),
+            "n_computed": raw.get("n", 0),
+            "n_cached": raw.get("n_cached", 0),
+        }],
+    }
+
+
 def _record_invocation(
     out: Path, spec: RunSpec, started_at: str, wall_clock_s: float, n_computed: int, n_cached: int
 ) -> None:
@@ -145,11 +178,7 @@ def _record_invocation(
     build_summary's wall-clock number is a sum over every invocation that computed anything)."""
     meta_path = out / "meta" / f"{spec.name}.json"
     meta_path.parent.mkdir(parents=True, exist_ok=True)
-    record: dict[str, Any] = (
-        json.loads(meta_path.read_text())
-        if meta_path.exists()
-        else {"run": spec.name, "invocations": []}
-    )
+    record: dict[str, Any] = _load_meta_record(meta_path, spec)
     invocation: dict[str, Any] = {
         "started_at": started_at,
         "wall_clock_s": wall_clock_s,
@@ -164,17 +193,32 @@ def _record_invocation(
     meta_path.write_text(json.dumps(record, indent=2))
 
 
+def _pilot_state(ex: Example) -> dict[str, str]:
+    """The 2026-09-19 pilot's exact state keys (spec §6.6 item 9)."""
+    return {"question": ex.question, "context": ex.passages, "answer": ex.response}
+
+
+_CHAT_CONFIGS: dict[tuple[str, str], ChatJudgeConfig] = {
+    ("deepseek", "ragverdict"): DEEPSEEK_FLASH,
+    ("deepseek", "pilot"): DEEPSEEK_FLASH_PILOT,
+    ("glm", "ragverdict"): GLM_FLASH,
+    ("glm", "pilot"): GLM_FLASH_PILOT,
+}
+
+
 def _execute(spec: RunSpec, exs: list[Any], store: PredictionStore, data_dir: Path) -> list[Any]:
     if spec.judge == "jev":
         paraphrase = spec.paraphrase or load_frozen(FROZEN_PATH)[0].jev_paraphrase
         question, inverted = PARAPHRASES[paraphrase]
         judge = JevJudge(faithfulness_question=question, question_means_unsupported=inverted)
-        return run_jev(exs, judge, store, spec.name, repeats=spec.repeats)
+        state_builder = _pilot_state if spec.jev_state == "pilot" else None
+        return run_jev(exs, judge, store, spec.name, repeats=spec.repeats,
+                       state_builder=state_builder)
     if spec.judge == "chat":
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
             raise click.UsageError("OPENROUTER_API_KEY is not set")
-        cfg = {"deepseek": DEEPSEEK_FLASH, "glm": GLM_FLASH}[spec.chat or ""]
+        cfg = _CHAT_CONFIGS[(spec.chat or "", spec.chat_prompt)]
         return run_chat_judge(exs, cfg, store, spec.name, api_key=api_key)
     llm = LLMJudge(model="claude-sonnet-5", thinking=spec.thinking)
     if spec.judge == "claude_live":

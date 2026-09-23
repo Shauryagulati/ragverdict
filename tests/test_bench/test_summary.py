@@ -230,9 +230,32 @@ def test_failure_and_missing_counts_and_total_spend(tmp_path: Path) -> None:
     j = summary["judges"]["jev"]
     assert j["n"] == 6
     assert j["n_failed"] == 1
-    assert j["n_failed_by_kind"] == {"transport": 1, "judge": 0}
+    assert j["n_failed_by_kind"] == {"transport": 1, "judge": 0, "unknown": 0}
     assert j["n_missing"] == 1
     assert j["total_spend_usd"] == pytest.approx(6 * 0.00005 + 0.00002)
+
+
+def test_n_failed_by_kind_buckets_legacy_rows_as_unknown(tmp_path: Path) -> None:
+    """A row with an error but no error_kind (written before error_kind existed) must be
+    counted somewhere, so the buckets always sum to n_failed."""
+    exs = _examples()
+    store = PredictionStore(tmp_path)
+    for e in exs:
+        if e.id == "1":
+            store.append(Prediction(run="jev", example_id=e.id, repeat=0, score=None,
+                                    cost_usd=0.00001, error="pre-error_kind failure"))
+            continue
+        store.append(Prediction(run="jev", example_id=e.id, repeat=0,
+                                score=(0.1 if e.hallucinated else 0.9), cost_usd=0.00005))
+    claude = {e.id: (0.5 if e.hallucinated else 1.0) for e in exs}
+    for eid, s in claude.items():
+        store.append(Prediction(run="claude", example_id=eid, repeat=0, score=s, cost_usd=0.002))
+
+    summary = build_summary({"test": exs}, store, FROZEN, "sha")
+    j = summary["judges"]["jev"]
+    assert j["n_failed"] == 1
+    assert j["n_failed_by_kind"] == {"transport": 0, "judge": 0, "unknown": 1}
+    assert sum(j["n_failed_by_kind"].values()) == j["n_failed"]
 
 
 def test_partial_progress_only_jev_present(tmp_path: Path) -> None:
