@@ -50,6 +50,11 @@ def run(config_path: Path, out_dir: Path, no_judge: bool) -> None:
     sys.exit(exit_code)
 
 
+from ragverdict.bench.cli import bench  # noqa: E402  (after cli group definition)
+
+cli.add_command(bench)
+
+
 def main() -> None:
     cli()
 
