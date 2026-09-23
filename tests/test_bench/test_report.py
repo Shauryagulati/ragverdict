@@ -23,7 +23,7 @@ from ragverdict.bench.summary import HEADLINE_JEV_RUN, build_summary
 
 FROZEN = FrozenConfig(
     jev_model="typesafe/jev-1.13", jev_paraphrase="A", jev_threshold=0.6,
-    claude_model="claude-sonnet-5", claude_rule="score<1.0", cascade_band=(0.3, 0.7),
+    claude_model="claude-sonnet-5", claude_rule="score<1.0 or supported<total", cascade_band=(0.3, 0.7),
     cascade_band_sweep=[(0.4, 0.6), (0.3, 0.7)], dataset_commit="abc",
     bootstrap_resamples=50, bootstrap_seed=0, registered=True,
 )
