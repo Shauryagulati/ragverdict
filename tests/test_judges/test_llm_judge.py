@@ -185,3 +185,13 @@ def test_missing_text_block_raises() -> None:
 def test_parse_judge_message_accepts_valid_payload() -> None:
     message = _message(JudgeScore(score=0.25, reasoning="one of four supported"))
     assert parse_judge_message(message, JudgeScore).score == 0.25
+
+
+def test_faithfulness_prompt_matches_request() -> None:
+    from ragverdict.judges.llm_judge import faithfulness_prompt
+
+    judge = LLMJudge(client=MagicMock(spec=anthropic.Anthropic))
+    system, user = faithfulness_prompt("resp", "ctx")
+    request = judge.faithfulness_request("resp", "ctx")
+    assert request["system"][0]["text"] == system
+    assert request["messages"][0]["content"] == user

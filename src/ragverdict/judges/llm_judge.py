@@ -37,6 +37,7 @@ __all__ = [
     "PushbackVerdict",
     "RefusalVerdict",
     "Thinking",
+    "faithfulness_prompt",
     "output_schema",
     "parse_judge_message",
 ]
@@ -214,6 +215,16 @@ Output a JSON object matching the supplied schema.
 """
 
 
+def faithfulness_prompt(response_text: str, retrieved_context: str) -> tuple[str, str]:
+    """(system prompt, user message) for a faithfulness judgment — shared by every LLM judge."""
+    user = (
+        f"<retrieved_context>\n{retrieved_context.strip() or '(no context retrieved)'}"
+        f"\n</retrieved_context>\n\n"
+        f"<response>\n{response_text}\n</response>"
+    )
+    return _FAITHFULNESS_SYSTEM, user
+
+
 def output_schema(model: type[BaseModel]) -> dict[str, Any]:
     """JSON schema the API enforces for `model`, minus fields the LLM must not fill.
 
@@ -278,12 +289,8 @@ class LLMJudge:
 
     def faithfulness_request(self, response_text: str, retrieved_context: str) -> dict[str, Any]:
         """The exact `messages.create` kwargs for a faithfulness call (also valid batch params)."""
-        user = (
-            f"<retrieved_context>\n{retrieved_context.strip() or '(no context retrieved)'}"
-            f"\n</retrieved_context>\n\n"
-            f"<response>\n{response_text}\n</response>"
-        )
-        return self._request(_FAITHFULNESS_SYSTEM, user, JudgeScore)
+        system, user = faithfulness_prompt(response_text, retrieved_context)
+        return self._request(system, user, JudgeScore)
 
     def faithfulness(self, response_text: str, retrieved_context: str) -> JudgeScore:
         return self._call(self.faithfulness_request(response_text, retrieved_context), JudgeScore)
