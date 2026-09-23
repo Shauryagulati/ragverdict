@@ -41,7 +41,7 @@ from ragverdict.bench.runs import (
     load_frozen,
     select_examples,
 )
-from ragverdict.bench.summary import build_summary
+from ragverdict.bench.summary import UNTUNED_JEV_THRESHOLD, build_summary
 from ragverdict.judges.jev_judge import JevJudge
 from ragverdict.judges.llm_judge import LLMJudge
 
@@ -326,3 +326,21 @@ def _print_table(summary: dict[str, Any]) -> None:
         table.add_row("cascade", str(cascade["n"]), "—", f"{frozen_band['f1']:.3f}",
                       f"${frozen_band['cost_usd_per_1k']:.3f}", "—")
     console.print(table)
+
+
+@ragtruth.command()
+@click.option("--out", type=click.Path(path_type=Path), default=Path("bench_results"), show_default=True)
+@click.option("--docs", type=click.Path(path_type=Path), default=Path("docs/bench"), show_default=True)
+@click.option("--audit", type=click.Path(path_type=Path), default=Path("docs/bench/data/audit.json"))
+def report(out: Path, docs: Path, audit: Path) -> None:
+    """Render charts and the results-page data from summary.json + cached predictions."""
+    from ragverdict.bench.charts import render_all
+    from ragverdict.bench.page import export
+
+    summary = json.loads((out / "summary.json").read_text())
+    for path in render_all(summary, docs):
+        click.echo(f"wrote {path}")
+    examples = load_examples(_data_dir(), split="test")
+    result = export(examples, PredictionStore(out), summary, UNTUNED_JEV_THRESHOLD,
+                    docs / "data", audit)
+    click.echo(f"wrote {result}")
