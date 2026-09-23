@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
 from ragverdict.bench.metrics import (
@@ -67,6 +69,12 @@ def test_reliability_puts_one_in_last_bin() -> None:
     assert [(b["lo"], b["n"]) for b in bins] == [(0.0, 1), (0.9, 1)]
 
 
+@pytest.mark.parametrize("bad", [-0.2, 1.3, float("nan")])
+def test_reliability_rejects_out_of_range_probs(bad: float) -> None:
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        reliability([bad], [T])
+
+
 def test_bootstrap_ci_constant_metric() -> None:
     assert bootstrap_ci(lambda idx: 0.7, 50) == (0.7, 0.7)
 
@@ -87,15 +95,28 @@ def test_bootstrap_skips_resamples_where_metric_undefined() -> None:
 
 
 def test_group_bootstrap_keeps_groups_together() -> None:
-    # 4 groups of 3 identical rows: resampled sizes are always multiples of 3
-    seen_sizes: set[int] = set()
+    # Unequal group sizes so row-resampling (which always yields n=11) can't accidentally
+    # pass: "a" x1, "b" x5, "c" x2, "d" x3.
+    groups = ["a"] + ["b"] * 5 + ["c"] * 2 + ["d"] * 3
+    members = {"a": [0], "b": [1, 2, 3, 4, 5], "c": [6, 7], "d": [8, 9, 10]}
+    seen_idx: list[list[int]] = []
 
     def metric(idx: list[int]) -> float:
-        seen_sizes.add(len(idx))
+        seen_idx.append(list(idx))
         return 0.0
 
-    bootstrap_ci(metric, 12, groups=[str(i // 3) for i in range(12)], n_resamples=50)
-    assert seen_sizes == {12}
+    bootstrap_ci(metric, len(groups), groups=groups, n_resamples=50)
+
+    assert len(seen_idx) == 50
+    for idx in seen_idx:
+        counts = Counter(idx)
+        total_draws = 0
+        for name, member_idx in members.items():
+            # every member of a drawn group must occur the same number of times
+            occurrences = {counts.get(i, 0) for i in member_idx}
+            assert len(occurrences) == 1, f"group {name} split across a resample: {idx}"
+            total_draws += occurrences.pop()
+        assert total_draws == 4  # one draw per of the 4 distinct groups, every resample
 
 
 def test_group_bootstrap_is_wider_for_correlated_rows() -> None:
@@ -106,6 +127,11 @@ def test_group_bootstrap_is_wider_for_correlated_rows() -> None:
     row_lo, row_hi = bootstrap_ci(mean, 100, seed=1)
     grp_lo, grp_hi = bootstrap_ci(mean, 100, groups=groups, seed=1)
     assert (grp_hi - grp_lo) > (row_hi - row_lo)
+
+
+def test_group_bootstrap_validates_groups_length() -> None:
+    with pytest.raises(ValueError, match="groups has"):
+        bootstrap_ci(lambda idx: 0.0, 5, groups=["a", "b"])
 
 
 def test_paired_bootstrap_diff() -> None:

@@ -13,7 +13,10 @@ from itertools import pairwise
 
 
 def auroc(scores: Sequence[float], labels: Sequence[bool]) -> float:
-    """Area under ROC via the Mann-Whitney rank formula (ties get average ranks)."""
+    """Area under ROC via the Mann-Whitney rank formula (ties get average ranks).
+
+    Higher `scores` = positive class: pass `1 - p_supported` with `labels` = hallucinated.
+    """
     n_pos = sum(labels)
     n_neg = len(labels) - n_pos
     if n_pos == 0 or n_neg == 0:
@@ -65,9 +68,14 @@ def classification(preds: Sequence[bool], labels: Sequence[bool]) -> dict[str, f
 def reliability(
     probs: Sequence[float], outcomes: Sequence[bool], n_bins: int = 10
 ) -> list[dict[str, float]]:
-    """Equal-width bins over [0, 1]; p == 1.0 lands in the last bin. Empty bins omitted."""
+    """Equal-width bins over [0, 1]; p == 1.0 lands in the last bin. Empty bins omitted.
+
+    `probs` is P(outcome is True) — `probs[i]` should be a prediction for `outcomes[i]`.
+    """
     buckets: list[list[int]] = [[] for _ in range(n_bins)]
     for i, p in enumerate(probs):
+        if not 0.0 <= p <= 1.0:  # also rejects NaN, since every NaN comparison is False
+            raise ValueError(f"probs[{i}] = {p!r} is not within [0, 1]")
         buckets[min(int(p * n_bins), n_bins - 1)].append(i)
     out: list[dict[str, float]] = []
     for b, idx in enumerate(buckets):
@@ -86,7 +94,10 @@ def reliability(
 
 
 def ece(probs: Sequence[float], outcomes: Sequence[bool], n_bins: int = 10) -> float:
-    """Expected calibration error: sample-weighted |mean predicted - observed rate|."""
+    """Expected calibration error: sample-weighted |mean predicted - observed rate|.
+
+    `probs` is P(outcome is True), same convention as `reliability`.
+    """
     total = len(probs)
     return sum(
         b["n"] / total * abs(b["mean_prob"] - b["frac_positive"])
@@ -104,6 +115,8 @@ def _resample_values(
     rng = random.Random(seed)
     members: dict[str, list[int]] = {}
     if groups is not None:
+        if len(groups) != n:
+            raise ValueError(f"groups has {len(groups)} entries but n={n}")
         for i, g in enumerate(groups):
             members.setdefault(g, []).append(i)
     keys = sorted(members)
