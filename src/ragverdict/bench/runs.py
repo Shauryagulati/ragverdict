@@ -44,10 +44,10 @@ JEV_COST_PER_CALL = 0.00005
 CLAUDE_BATCH_COST_PER_CALL = 0.0026  # thinking disabled; measured 2026-09-22
 CLAUDE_BATCH_THINKING_COST_PER_CALL = 0.009  # measured 2026-09-22
 CLAUDE_LIVE_COST_PER_CALL = 0.0043
-# Live smoke test, 2026-09-22 (measured per-call cost; supersedes the brief's older estimate).
-DEEPSEEK_COST_PER_CALL = 0.00036
-# Live smoke test, 2026-09-22 (measured per-call cost; supersedes the brief's older estimate).
-GLM_COST_PER_CALL = 0.00036
+# Measured on the pinned fp8 providers, 2026-09-22 smoke test (rounded up for the budget guard).
+DEEPSEEK_COST_PER_CALL = 0.00025
+# Measured on the pinned fp8 provider, 2026-09-22 smoke test (rounded up for the budget guard).
+GLM_COST_PER_CALL = 0.0003
 
 # Requested model ids and list prices (USD per MTok in/out), checked 2026-09-22.
 # Claude batch runs bill 50% of these; Jev output is free.

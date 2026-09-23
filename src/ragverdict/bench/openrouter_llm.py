@@ -42,16 +42,17 @@ class ChatJudgeConfig:
 
 # Provider pinning: `require_parameters` alone doesn't pin a provider, so calls could otherwise
 # mix providers and quantizations mid-run. Selection policy, applied to the free
-# `GET /v1/models/<author>/<slug>/endpoints` listing: prefer the model maker's own first-party
-# endpoint if one is listed (comparable to the pilot, which used first-party APIs); otherwise
-# the highest-precision endpoint (bf16 > fp8 > fp4) that supports both `response_format` and
-# `reasoning` in `supported_parameters` — cheap 4-bit quantization would be an unfair handicap
-# against the LLM judges relative to Jev.
-DEEPSEEK_PROVIDER = ("DeepSeek",)  # provider=DeepSeek (model maker), quantization=undisclosed
-# (not the low-bit quant third-party endpoints use); $0.0000003/$0.0000012 per token.
-# chosen 2026-09-22: first-party
-GLM_PROVIDER = ("Z.AI",)  # provider=Z.AI (model maker, Zhipu), quantization=fp8;
-# $0.00000015/$0.0000005 per token. chosen 2026-09-22: first-party
+# `GET /v1/models/<author>/<slug>/endpoints` listing: the highest-precision endpoint
+# (bf16 > fp8 > fp4) that supports `structured_outputs` (strict JSON schema, the same output
+# guarantee Claude gets) and `reasoning`, verified with a live 3-example smoke test.
+# The model makers' own endpoints (DeepSeek, Z.AI) don't support strict JSON schema on
+# OpenRouter (checked 2026-09-22: DeepSeek returned "no endpoints"; Z.AI in plain JSON mode
+# returned invalid JSON on 2 of 3 smoke calls), and 4-bit endpoints would handicap the LLM
+# judges relative to Jev.
+DEEPSEEK_PROVIDER = ("DeepInfra",)  # quantization=fp8; $0.00000014/$0.00000042 per token;
+# smoke 3/3 ok at ~$0.0002/call. chosen 2026-09-22
+GLM_PROVIDER = ("Parasail",)  # quantization=fp8; $0.00000015/$0.0000005 per token;
+# smoke 3/3 ok at ~$0.00026/call. chosen 2026-09-22
 
 # Mirrors the 2026-09-19 pilot: DeepSeek thinking off / temp 0 / 512 tokens;
 # GLM thinking on (effort low) / sampling default / 4096 tokens.

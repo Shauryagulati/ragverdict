@@ -66,7 +66,7 @@ def test_chat_body_uses_claude_rubric_and_schema() -> None:
     assert body["reasoning"] == {"enabled": False}
     assert body["usage"] == {"include": True}
     assert body["provider"] == {
-        "order": ["DeepSeek"], "allow_fallbacks": False, "require_parameters": True,
+        "order": ["DeepInfra"], "allow_fallbacks": False, "require_parameters": True,
     }
 
 
@@ -88,7 +88,7 @@ def test_glm_body_omits_temperature_and_enables_reasoning() -> None:
     body = chat_body(GLM_FLASH, "r", "c")
     assert "temperature" not in body
     assert body["reasoning"] == {"effort": "low"} and body["max_tokens"] == 4096
-    assert body["provider"]["order"] == ["Z.AI"]
+    assert body["provider"]["order"] == ["Parasail"]
 
 
 def test_json_object_mode_puts_schema_in_system_prompt() -> None:
@@ -206,7 +206,7 @@ def test_pilot_chat_body_uses_pilot_prompt_and_json_object_mode() -> None:
     system = body["messages"][0]["content"]
     assert "Judge only the supplied evidence" in system
     assert json.dumps(PILOT_SCHEMA) in system
-    assert body["provider"]["order"] == ["DeepSeek"]  # same pinned provider as the ragverdict arm
+    assert body["provider"]["order"] == ["DeepInfra"]  # same pinned provider as the ragverdict arm
 
 
 def test_pilot_chat_body_carries_temperature_and_reasoning_from_cfg() -> None:
