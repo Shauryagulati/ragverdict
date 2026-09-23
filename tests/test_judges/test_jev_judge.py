@@ -8,7 +8,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from ragverdict.judges.base import Judge, JudgeError
+from ragverdict.judges.base import Judge, JudgeError, JudgeTransportError
 from ragverdict.judges.jev_judge import FAITHFULNESS_QUESTION, JevJudge
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -129,12 +129,25 @@ def test_network_error_is_retried() -> None:
 
 
 def test_malformed_body_raises() -> None:
-    with pytest.raises(JudgeError, match="unexpected response shape"):
+    with pytest.raises(JudgeTransportError, match="unexpected response shape"):
         _judge(lambda r: httpx.Response(200, json={"answers": {}})).faithfulness("r", "s")
 
 
+def test_non_json_body_raises_transport_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not json", headers={"content-type": "application/json"})
+
+    with pytest.raises(JudgeTransportError, match="non-JSON body"):
+        _judge(handler).faithfulness("r", "s")
+
+
+def test_non_dict_body_raises_transport_error() -> None:
+    with pytest.raises(JudgeTransportError, match="unexpected response shape"):
+        _judge(lambda r: httpx.Response(200, json=[1, 2, 3])).faithfulness("r", "s")
+
+
 def test_out_of_range_probability_raises() -> None:
-    with pytest.raises(JudgeError, match="out of range"):
+    with pytest.raises(JudgeTransportError, match="out of range"):
         _judge(lambda r: _ok(1.5)).faithfulness("r", "s")
 
 

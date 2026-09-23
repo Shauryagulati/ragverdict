@@ -56,26 +56,41 @@ class Prediction:
 
 
 def _iter_predictions(path: Path) -> Iterator[Prediction]:
-    """Yield every well-formed row in `path`, skipping a malformed trailing line.
+    """Yield every well-formed row in `path`, skipping only a malformed trailing line.
 
     A crash mid-write can leave a truncated final line; that row never completed
-    and carries no information, so it's skipped rather than crashing the load.
+    and carries no information, so it's skipped rather than crashing the load. Any
+    other malformed line — malformed JSON, or a row whose fields don't match
+    `Prediction` — is real corruption, not a partial write, and must not be
+    silently dropped: a dropped row would be silently re-billed (retried) and
+    missed by `total_spend`. So it raises a clear ValueError naming the file and
+    line number instead.
     """
     if not path.exists():
         return
-    with path.open() as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
+    lines = path.read_text().splitlines()
+    last_index = len(lines) - 1
+    for index, raw_line in enumerate(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+        is_last = index == last_index
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError as exc:
+            if is_last:
                 continue
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
+            raise ValueError(
+                f"malformed JSON in {path} at line {index + 1}: {exc}"
+            ) from exc
+        try:
+            yield Prediction(**data)
+        except TypeError as exc:
+            if is_last:
                 continue
-            try:
-                yield Prediction(**data)
-            except TypeError:
-                continue
+            raise ValueError(
+                f"row in {path} at line {index + 1} doesn't match the Prediction schema: {exc}"
+            ) from exc
 
 
 class PredictionStore:

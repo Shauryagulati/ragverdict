@@ -19,7 +19,7 @@ from ragverdict.bench.openrouter_llm import (
 )
 from ragverdict.bench.predict import PredictionStore
 from ragverdict.bench.ragtruth import Example
-from ragverdict.judges.base import JudgeError, JudgeScore
+from ragverdict.judges.base import JudgeError, JudgeScore, JudgeTransportError
 from ragverdict.judges.llm_judge import faithfulness_prompt, output_schema
 
 
@@ -89,8 +89,8 @@ def test_parse_invalid_json_raises() -> None:
         parse_chat_response(_ok("not json").json())
 
 
-def test_parse_missing_choices_raises() -> None:
-    with pytest.raises(JudgeError, match="unexpected response shape"):
+def test_parse_missing_choices_raises_transport_error() -> None:
+    with pytest.raises(JudgeTransportError, match="unexpected response shape"):
         parse_chat_response({"error": {"message": "x"}})
 
 
@@ -132,6 +132,40 @@ def test_run_non_retryable_http_error_is_error_row(tmp_path: Path) -> None:
                            backoff_s=0)
     assert preds[0].score is None and "HTTP 400" in (preds[0].error or "")
     assert preds[0].error_kind == "transport"
+
+
+def test_run_non_json_body_is_transport_error(tmp_path: Path) -> None:
+    preds = run_chat_judge([_ex(1)], DEEPSEEK_FLASH, PredictionStore(tmp_path), "deepseek",
+                           api_key="k",
+                           client=_client(lambda r: httpx.Response(200, content=b"not json")),
+                           backoff_s=0)
+    assert preds[0].score is None
+    assert preds[0].error_kind == "transport"
+
+
+def test_run_non_dict_body_is_transport_error(tmp_path: Path) -> None:
+    preds = run_chat_judge([_ex(1)], DEEPSEEK_FLASH, PredictionStore(tmp_path), "deepseek",
+                           api_key="k", client=_client(lambda r: httpx.Response(200, json=[1, 2])),
+                           backoff_s=0)
+    assert preds[0].score is None
+    assert preds[0].error_kind == "transport"
+
+
+def test_run_missing_choices_is_transport_error_and_retried_by_rerun(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    first = run_chat_judge(
+        [_ex(1)], DEEPSEEK_FLASH, store, "deepseek", api_key="k",
+        client=_client(lambda r: httpx.Response(200, json={"error": {"message": "x"}})),
+        backoff_s=0,
+    )
+    assert first[0].score is None
+    assert first[0].error_kind == "transport"
+
+    second = run_chat_judge(
+        [_ex(1)], DEEPSEEK_FLASH, store, "deepseek", api_key="k",
+        client=_client(lambda r: _ok(VALID)), backoff_s=0,
+    )
+    assert second[0].score == 0.5
 
 
 def test_run_sends_bearer_key(tmp_path: Path) -> None:

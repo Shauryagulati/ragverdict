@@ -79,11 +79,14 @@ def _strip_fences(text: str) -> str:
 
 
 def parse_chat_response(data: dict[str, Any]) -> JudgeScore:
+    # The `choices`/`message`/`content` envelope is the gateway's job, not the LLM's —
+    # a missing or malformed envelope (e.g. an `{"error": ...}` body) is a transport
+    # problem, distinct from the LLM producing bad content inside a well-formed envelope.
     try:
         choice = data["choices"][0]
         content = choice["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as exc:
-        raise JudgeError(f"unexpected response shape: {str(data)[:200]}") from exc
+        raise JudgeTransportError(f"unexpected response shape: {str(data)[:200]}") from exc
     if choice.get("finish_reason") == "length":
         raise JudgeError("judge output truncated (finish_reason=length)")
     try:
@@ -108,9 +111,9 @@ def _post(
                 try:
                     data = response.json()
                 except ValueError as exc:
-                    raise JudgeError("non-JSON body from OpenRouter") from exc
+                    raise JudgeTransportError("non-JSON body from OpenRouter") from exc
                 if not isinstance(data, dict):
-                    raise JudgeError(f"unexpected response shape: {str(data)[:200]}")
+                    raise JudgeTransportError(f"unexpected response shape: {str(data)[:200]}")
                 return data
             last = f"HTTP {response.status_code}: {response.text[:200]}"
             if response.status_code not in _RETRYABLE_STATUS:

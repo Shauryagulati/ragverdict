@@ -136,9 +136,13 @@ class JevJudge:
         try:
             p = float(data["answers"]["q"]["noul"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise JudgeError(f"jev returned an unexpected response shape: {str(data)[:200]}") from exc
+            # Jev is a typed classifier — it cannot itself emit a malformed answer, so a
+            # missing/malformed `answers.q.noul` means the gateway mangled the response.
+            raise JudgeTransportError(
+                f"jev returned an unexpected response shape: {str(data)[:200]}"
+            ) from exc
         if not 0.0 <= p <= 1.0:
-            raise JudgeError(f"jev returned probability out of range: {p}")
+            raise JudgeTransportError(f"jev returned probability out of range: {p}")
         usage = data.get("usage")
         if not isinstance(usage, dict):
             usage = {}
@@ -171,9 +175,11 @@ class JevJudge:
                     try:
                         data = response.json()
                     except ValueError as exc:
-                        raise JudgeError("jev returned a non-JSON body") from exc
+                        raise JudgeTransportError("jev returned a non-JSON body") from exc
                     if not isinstance(data, dict):
-                        raise JudgeError(f"jev returned an unexpected response shape: {str(data)[:200]}")
+                        raise JudgeTransportError(
+                            f"jev returned an unexpected response shape: {str(data)[:200]}"
+                        )
                     return data
                 last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                 if response.status_code not in _RETRYABLE_STATUS:

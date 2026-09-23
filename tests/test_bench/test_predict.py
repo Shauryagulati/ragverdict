@@ -78,6 +78,48 @@ def test_load_skips_malformed_trailing_line(tmp_path: Path) -> None:
     assert loaded.keys() == {("1", 0)}
 
 
+def test_load_raises_on_malformed_middle_line(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    store.append(Prediction(run="x", example_id="1", repeat=0, score=0.5))
+    path = store.path("x")
+    with path.open("a") as fh:
+        # malformed JSON, but NOT the last line — a real partial write only ever
+        # truncates the final line, so a broken line earlier means real corruption.
+        fh.write('{"run": "x", "example_id": "2", "repeat": 0, "sc\n')
+        fh.write(json.dumps({"run": "x", "example_id": "3", "repeat": 0, "score": 0.1}) + "\n")
+    with pytest.raises(ValueError) as excinfo:
+        store.load("x")
+    assert str(path) in str(excinfo.value)
+    assert "line 2" in str(excinfo.value)
+
+
+def test_load_raises_on_unknown_field_row(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    store.append(Prediction(run="x", example_id="1", repeat=0, score=0.5))
+    path = store.path("x")
+    with path.open("a") as fh:
+        # valid JSON, but doesn't match the Prediction schema — not the last line.
+        fh.write(json.dumps({"run": "x", "example_id": "2", "repeat": 0, "score": 0.3,
+                             "totally_unknown_field": "oops"}) + "\n")
+        fh.write(json.dumps({"run": "x", "example_id": "3", "repeat": 0, "score": 0.1}) + "\n")
+    with pytest.raises(ValueError) as excinfo:
+        store.load("x")
+    assert str(path) in str(excinfo.value)
+    assert "line 2" in str(excinfo.value)
+
+
+def test_load_tolerates_rows_missing_optional_fields(tmp_path: Path) -> None:
+    store = PredictionStore(tmp_path)
+    path = store.path("x")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as fh:
+        # a row written before error_kind existed — no error_kind key at all.
+        fh.write(json.dumps({"run": "x", "example_id": "1", "repeat": 0, "score": 0.5}) + "\n")
+    loaded = store.load("x")
+    assert loaded[("1", 0)].score == 0.5
+    assert loaded[("1", 0)].error_kind is None
+
+
 def test_total_spend_sums_every_row_including_superseded(tmp_path: Path) -> None:
     store = PredictionStore(tmp_path)
     store.append(Prediction(run="x", example_id="1", repeat=0, score=None,
