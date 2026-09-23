@@ -25,9 +25,11 @@ SOURCES = [
 ]
 
 
-def _span(label_type: str, text: str, implicit_true: bool = False) -> dict[str, object]:
+def _span(
+    label_type: str, text: str, implicit_true: bool = False, due_to_null: bool = False
+) -> dict[str, object]:
     return {"start": 0, "end": 1, "text": text, "meta": "", "label_type": label_type,
-            "implicit_true": implicit_true, "due_to_null": False}
+            "implicit_true": implicit_true, "due_to_null": due_to_null}
 
 
 RESPONSES = [
@@ -87,6 +89,79 @@ def test_example_fields_and_slices(tmp_path: Path) -> None:
 def test_clean_example_has_no_severity(tmp_path: Path) -> None:
     e = load_examples(_write_dataset(tmp_path), split="test")[0]
     assert e.severity is None and e.kind is None
+
+
+def test_question_and_passages_empty_for_non_qa(tmp_path: Path) -> None:
+    by_id = {e.id: e for e in load_examples(_write_dataset(tmp_path), split="test")}
+    assert by_id["3"].task == "Summary"
+    assert by_id["3"].question == "" and by_id["3"].passages == ""
+
+
+# ---------- convention_dependent + QA question/passages ----------
+
+_CONVENTION_SOURCES = [
+    {"source_id": "cs1", "task_type": "QA", "source": "MARCO",
+     "source_info": {"question": "q?", "passages": "p1\np2"}, "prompt": "Q prompt"},
+]
+
+_CONVENTION_RESPONSES = [
+    # clean only by convention: the single span is implicit_true
+    {"id": "c1", "source_id": "cs1", "model": "g", "temperature": 0.7, "split": "test",
+     "quality": "good", "response": "r1",
+     "labels": [_span("Subtle Baseless Info", "true unstated", implicit_true=True)]},
+    # hallucinated only by convention: the single counted span is due_to_null
+    {"id": "c2", "source_id": "cs1", "model": "g", "temperature": 0.7, "split": "test",
+     "quality": "good", "response": "r2",
+     "labels": [_span("Evident Conflict", "null field", due_to_null=True)]},
+    # ordinary hallucination: counted span is not due_to_null
+    {"id": "c3", "source_id": "cs1", "model": "g", "temperature": 0.7, "split": "test",
+     "quality": "good", "response": "r3",
+     "labels": [_span("Evident Conflict", "just wrong")]},
+    # ordinary clean: no spans at all
+    {"id": "c4", "source_id": "cs1", "model": "g", "temperature": 0.7, "split": "test",
+     "quality": "good", "response": "r4", "labels": []},
+    # mixed: one implicit_true span plus one real (non-due_to_null) span -> hallucinated,
+    # and the counted span isn't all due_to_null, so not convention_dependent
+    {"id": "c5", "source_id": "cs1", "model": "g", "temperature": 0.7, "split": "test",
+     "quality": "good", "response": "r5",
+     "labels": [_span("Subtle Baseless Info", "unstated", implicit_true=True),
+                _span("Evident Conflict", "wrong")]},
+]
+
+
+def _write_convention_dataset(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "response.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in _CONVENTION_RESPONSES) + "\n"
+    )
+    (root / "source_info.jsonl").write_text(
+        "\n".join(json.dumps(s) for s in _CONVENTION_SOURCES) + "\n"
+    )
+    return root
+
+
+def test_convention_dependent_clean_only_by_implicit_true(tmp_path: Path) -> None:
+    by_id = {e.id: e for e in load_examples(_write_convention_dataset(tmp_path), split="test")}
+    assert by_id["c1"].hallucinated is False
+    assert by_id["c1"].convention_dependent is True
+
+
+def test_convention_dependent_hallucinated_only_by_due_to_null(tmp_path: Path) -> None:
+    by_id = {e.id: e for e in load_examples(_write_convention_dataset(tmp_path), split="test")}
+    assert by_id["c2"].hallucinated is True
+    assert by_id["c2"].convention_dependent is True
+
+
+def test_convention_dependent_false_for_ordinary_and_mixed_cases(tmp_path: Path) -> None:
+    by_id = {e.id: e for e in load_examples(_write_convention_dataset(tmp_path), split="test")}
+    assert by_id["c3"].convention_dependent is False  # ordinary hallucination
+    assert by_id["c4"].convention_dependent is False  # ordinary clean
+    assert by_id["c5"].convention_dependent is False  # hallucinated, mixed spans
+
+
+def test_question_and_passages_populated_for_qa(tmp_path: Path) -> None:
+    by_id = {e.id: e for e in load_examples(_write_convention_dataset(tmp_path), split="test")}
+    assert by_id["c1"].question == "q?" and by_id["c1"].passages == "p1\np2"
 
 
 @pytest.mark.parametrize(("text", "expected"), [
@@ -163,3 +238,17 @@ def test_real_test_split_counts() -> None:
     qa = [e for e in everything if e.task == "QA"]
     # the 2026-09-19 pilot's QA cohort: 900 responses, 160 with any span
     assert len(qa) == 900 and sum(e.hallucinated_any_span for e in qa) == 160
+
+
+@pytest.mark.skipif(not (DEFAULT_CACHE / "response.jsonl").exists(), reason="RAGTruth not downloaded")
+def test_real_convention_dependent_counts() -> None:
+    """120 test/good rows are convention_dependent: 49 clean only because every span is
+    implicit_true, 71 hallucinated only because every counted span is due_to_null
+    (methodology-redteam.md item A.6 / spec §6.6 item 6)."""
+    examples = load_examples(ensure_downloaded(), split="test")
+    dependent = [e for e in examples if e.convention_dependent]
+    implicit_only = [e for e in dependent if not e.hallucinated]
+    due_to_null_only = [e for e in dependent if e.hallucinated]
+    assert len(dependent) == 120
+    assert len(implicit_only) == 49
+    assert len(due_to_null_only) == 71

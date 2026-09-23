@@ -51,6 +51,13 @@ class Example:
     source_id: str = ""  # ~6 responses share a source; bootstrap resamples by this
     quality: str = "good"  # RAGTruth quality flag: good | incorrect_refusal | truncated
     hallucinated_any_span: bool = False  # 2026-09-19 pilot's rule: any span, incl. implicit_true
+    # True iff the primary label only holds by convention: every span is implicit_true
+    # (clean only because implicit_true content doesn't count), or every counted
+    # (implicit_true==false) span is due_to_null (hallucinated only because of a null
+    # source field). See methodology-redteam.md item A.6 / spec §6.6 item 6.
+    convention_dependent: bool = False
+    question: str = ""  # QA only: source_info["question"]
+    passages: str = ""  # QA only: source_info["passages"]
 
     @property
     def severity(self) -> str | None:
@@ -123,13 +130,22 @@ def load_examples(
         if row["split"] != split or (quality == "good" and row["quality"] != "good"):
             continue
         source = sources[row["source_id"]]
-        spans = [s for s in row["labels"] if not s.get("implicit_true")]
+        all_spans = row["labels"]
+        spans = [s for s in all_spans if not s.get("implicit_true")]
         texts = tuple(str(s["text"]) for s in spans)
+        convention_dependent = (
+            bool(all_spans) and all(s.get("implicit_true") for s in all_spans)
+        ) or (bool(spans) and all(s.get("due_to_null") for s in spans))
+        task = str(source["task_type"])
+        question = passages = ""
+        if task == "QA" and isinstance(source.get("source_info"), dict):
+            question = str(source["source_info"].get("question", ""))
+            passages = str(source["source_info"].get("passages", ""))
         examples.append(
             Example(
                 id=str(row["id"]),
                 split=split,
-                task=str(source["task_type"]),
+                task=task,
                 generator=str(row["model"]),
                 source=str(source["prompt"]),
                 response=str(row["response"]),
@@ -140,6 +156,9 @@ def load_examples(
                 source_id=str(row["source_id"]),
                 quality=str(row["quality"]),
                 hallucinated_any_span=bool(row["labels"]),
+                convention_dependent=convention_dependent,
+                question=question,
+                passages=passages,
             )
         )
     return examples
