@@ -4,6 +4,43 @@ All notable changes to `ragverdict` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-09-23
+
+Adds a `Judge` protocol so any scorer — not just `LLMJudge` — can back ragverdict, plus
+two new backends (Jev, and a Jev→Claude cascade), and a RAGTruth benchmark comparing them.
+
+### Added
+
+- `Judge` protocol (`faithfulness`, `relevance`, `refusal`, `pushback`) that any judge
+  backend implements; `JudgeTransportError` for transport-level failures distinct from
+  judge-level errors; results can now carry an optional `confidence`.
+- `judge.provider: jev | cascade` in config, alongside the existing `anthropic`. New
+  `judge` fields: `thinking`, `jev_model`, `jev_base_url`, `cascade_band`.
+- `JevJudge`: a lightweight probabilistic judge backend (TypeSafe's Jev, via OpenRouter or
+  TypeSafe directly).
+- `CascadeJudge`: Jev first, escalating to an LLM judge only when Jev's probability falls
+  inside `cascade_band`.
+- `ragverdict bench ragtruth` subcommands and the `[bench]` extra (`numpy`, `scikit-learn`,
+  `matplotlib`) for reproducing the Jev-vs-LLM-judge benchmark against RAGTruth. See
+  [docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md) for method,
+  pre-registration, and results.
+- A warning printed once to stderr when a `jev`/`cascade` judge is configured with the
+  still-default `faithfulness_pass`/`faithfulness_weak` thresholds, which were calibrated
+  for an LLM's claim-fraction score and are usually too strict for Jev's probability score.
+- `examples/demo_rag/config.jev.yaml`: a worked example of a Jev-backed cascade config with
+  thresholds set for Jev's score.
+
+### Changed
+
+- `LLMJudge`'s `max_tokens` default raised from 1024 to 4096, with clear truncation and
+  refusal errors instead of a bare JSON-parse failure — fixes truncated judge output on
+  thinking-by-default models such as Claude Sonnet 5.
+- Every `LLMJudge` request is now built as `messages.create` kwargs plus an `output_config`
+  JSON schema (via `anthropic.transform_schema`) rather than `messages.parse()`; the same
+  request body is reusable against the Batch API.
+- `anthropic` dependency bumped to `>=0.102` (required for structured `output_config` and
+  `anthropic.transform_schema`).
+
 ## [0.2.1] — 2026-06-25
 
 ### Changed

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragverdict"
-version = "0.2.1"
+version = "0.3.0"
 description = "pytest for RAG agents — behavioral audits with PASS/FAIL/WEAK verdicts"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "anthropic>=0.40",
+    "anthropic>=0.102",
     "click>=8.1",
     "pydantic>=2.6",
     "pyyaml>=6.0",
