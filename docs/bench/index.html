@@ -3,8 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jev vs LLM judges — RAGTruth benchmark</title>
-<meta name="description" content="Results explorer: Jev, Claude Sonnet 5, DeepSeek Flash, GLM Flash and a Jev-to-Claude cascade judging RAGTruth's human-labeled RAG hallucinations.">
+<title>Jev vs LLM judges on RAGTruth</title>
+<meta name="description" content="Jev, a $0.05-per-1,000 yes/no model, scored highest at default settings on 2,666 human-labeled RAG answers. At equal strictness the LLM judges were as good or better.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Jev vs LLM judges on 2,666 human-labeled RAG answers">
+<meta property="og:description" content="Jev, a $0.05-per-1,000 yes/no model, scored highest at default settings on 2,666 human-labeled RAG answers. At equal strictness the LLM judges were as good or better.">
+<meta property="og:url" content="https://shauryagulati.github.io/ragverdict/bench/">
+<meta property="og:image" content="https://shauryagulati.github.io/ragverdict/bench/social-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="F1 and cost per 1,000 checks for Jev, GLM Flash, Claude Sonnet 5 and DeepSeek Flash.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://shauryagulati.github.io/ragverdict/bench/social-card.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #ffffff;
@@ -172,29 +185,119 @@
   details.source-details summary { cursor: pointer; font-size: 0.82rem; color: var(--accent); }
   details.source-details p.body-text { margin-top: 6px; }
 
-  .audit-entry {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 14px;
-    margin-bottom: 12px;
-    background: var(--card-bg);
-    font-size: 0.87rem;
+
+  /* Story: the 60-second reading layer above the data */
+  .story, .story-section { max-width: 920px; margin: 0 auto; }
+  .story { padding-top: 56px; }
+  .story-kicker { color: var(--muted); font-size: 0.85rem; margin: 0 0 18px; }
+  .story-title {
+    font-family: "Newsreader", Georgia, serif;
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: clamp(1.9rem, 1.2rem + 3vw, 3.1rem);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    margin: 0 0 22px;
   }
-  .audit-entry dt { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
-  .audit-entry dd { margin: 0 0 8px; }
+  .story-title .second { display: block; color: var(--muted); }
+  .prose, .story-lede, .findings dd {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 1.2rem;
+    line-height: 1.55;
+    max-width: 62ch;
+  }
+  .story-lede { margin: 0 0 18px; }
+  .story-byline { font-size: 0.9rem; color: var(--muted); margin: 0 0 36px; }
+  .story-byline a { margin-left: 14px; }
+  .story-figure { margin: 0 0 8px; }
+  .story-figure img { width: 100%; height: auto; display: block; border: 1px solid var(--border); border-radius: 4px; }
+  .story-figure figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 8px; max-width: 70ch; }
+  .story-section h2 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 600;
+    font-size: 1.55rem;
+    border-bottom: none;
+    margin: 52px 0 14px;
+    padding: 0;
+  }
+  .findings { margin: 0; }
+  .findings dt {
+    font-weight: 650;
+    font-size: 1.05rem;
+    margin: 26px 0 6px;
+    padding-left: 14px;
+    border-left: 3px solid var(--accent);
+    max-width: 62ch;
+  }
+  .findings dt:first-child { margin-top: 0; }
+  .findings dd { margin: 0 0 0 17px; }
+  .prose { margin: 0 0 14px; }
+  .prose-limits { color: var(--muted); }
+  .details-lead {
+    max-width: 920px;
+    margin: 72px auto 0;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .details-lead h2 { border-bottom: none; margin: 0 0 6px; font-size: 1.35rem; }
+  .details-lead p { color: var(--muted); max-width: 70ch; }
+  @media (max-width: 640px) {
+    .story { padding-top: 32px; }
+    .prose, .story-lede, .findings dd { font-size: 1.08rem; }
+    .story-byline a { display: inline-block; margin: 6px 14px 0 0; }
+  }
 
   footer.page-footer { max-width: 920px; margin: 48px auto 0; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); padding-top: 12px; }
 </style>
 </head>
 <body>
-<header class="page-header">
-  <h1>Jev vs LLM judges on RAGTruth</h1>
-  <p class="subtitle">Can Jev, a cheap yes/no decision model, catch RAG hallucinations as well as LLM judges (Claude Sonnet 5, DeepSeek Flash, GLM Flash) — and does a Jev&rarr;Claude cascade add anything?</p>
-  <p class="links">
-    <a href="https://github.com/Shauryagulati/ragverdict/blob/main/docs/jev-ragtruth-benchmark.md">Read the write-up</a>
-    <a href="https://github.com/Shauryagulati/ragverdict">ragverdict on GitHub</a>
+<header class="story">
+  <p class="story-kicker">A ragverdict benchmark, September 2026</p>
+  <h1 class="story-title">Jev scored highest at default settings. <span class="second">Mostly because of where its cutoff sits.</span></h1>
+  <p class="story-lede">I tested TypeSafe's Jev, a yes/no decision model that costs about five cents per thousand checks, against three LLM judges: Claude Sonnet 5, DeepSeek Flash and GLM Flash. The job was to spot hallucinations in 2,666 RAG answers from RAGTruth, where trained annotators had marked every unsupported claim. Here is what held up.</p>
+  <p class="story-byline">Shaurya Gulati
+    <a href="https://github.com/Shauryagulati/ragverdict/blob/main/docs/jev-ragtruth-benchmark.md">Full write-up and method</a>
+    <a href="https://github.com/Shauryagulati/ragverdict">Code on GitHub</a>
+    <a href="https://github.com/Shauryagulati/ragverdict/tree/main/docs/bench/data">Raw predictions</a>
   </p>
+  <figure class="story-figure">
+    <picture>
+      <source srcset="story_chart_dark.png" media="(prefers-color-scheme: dark)">
+      <img src="story_chart_light.png" width="1840" height="920" alt="F1 against cost per 1,000 checks on a log scale. Jev: F1 0.758 at $0.05. GLM Flash: 0.753 at $0.28. DeepSeek Flash: 0.708 at $0.10. Claude Sonnet 5: 0.721 at $6.54.">
+    </picture>
+    <figcaption>Each judge at its default setting, with 95% confidence intervals. Claude is priced at its standard list rate; the others at what OpenRouter billed. The full results below also show Claude's cheaper batch price.</figcaption>
+  </figure>
 </header>
+
+<section class="story-section" aria-labelledby="findings-heading">
+  <h2 id="findings-heading">What held up</h2>
+  <dl class="findings">
+    <dt>At default settings, Jev was the cheapest judge and scored highest.</dt>
+    <dd>F1 0.758, against 0.753 for GLM Flash, 0.721 for Claude and 0.708 for DeepSeek Flash. It cost $0.05 per 1,000 checks against $6.54 for Claude at list price, and answered in about 0.3 seconds against 3. Asked the same thing three times, it never changed its verdict; Claude changed on 6 of 102 answers.</dd>
+    <dt>At equal strictness, the LLM judges were as good or better.</dt>
+    <dd>The LLM rubrics flag too much: Claude marked 35% of the clean answers as hallucinated. Jev's default cutoff happens to sit in a better place, and its score is fine-grained enough to move. Compared at each LLM's own operating point, Jev's lead disappears.</dd>
+    <dt>It misses subtle errors from strong models.</dt>
+    <dd>Jev caught 43% of GPT-4's hallucinations and Claude caught 65%. The misses reuse the source's own words with the meaning changed, such as who sued whom or a dropped negation. There are about 40 such cases per model, so read this as directional.</dd>
+    <dt>Stacking judges did not help.</dt>
+    <dd>Sending Jev's unsure cases to Claude added nothing to F1. Letting Claude think before answering added nothing either, at 1.9 times the cost, on a 150-answer sample.</dd>
+  </dl>
+</section>
+
+<section class="story-section" aria-labelledby="use-heading">
+  <h2 id="use-heading">What to do with it</h2>
+  <p class="prose">Jev works as a cheap, fast and consistent first-pass judge, if you set its cutoff from a labeled sample of your own data instead of trusting the default. Keep an LLM judge where you need a written explanation, or where subtle, fluent hallucinations are the ones that hurt.</p>
+</section>
+
+<section class="story-section" aria-labelledby="method-heading">
+  <h2 id="method-heading">How it was tested</h2>
+  <p class="prose">The settings and twelve predictions were committed before any test answer was judged, and the benchmark refuses to run on the test split without that commit. Cutoffs were tuned on 600 training answers that share no source documents with the test set. Confidence intervals resample whole source documents, because about six answers share each one. A separate script with no shared code recomputes the headline numbers, and every raw prediction is published.</p>
+  <p class="prose prose-limits">Limits: one dataset, written by 2023-era models; one yes/no question per answer; and the pre-registration is a local commit, not an independent timestamp.</p>
+</section>
+
+<section class="details-lead" aria-labelledby="details-heading">
+  <h2 id="details-heading">The full results</h2>
+  <p>Everything below is read from the published data: every judge with confidence intervals, the two pre-registered tests, sensitivity checks, the remaining charts, and a case explorer of the answers where Jev and Claude disagree.</p>
+</section>
 
 <main>
   <div id="load-status" class="status-banner" hidden></div>
@@ -215,22 +318,9 @@
     <div id="sensitivity-invalid-wrap"></div>
   </section>
 
-  <section id="pilot-section" aria-labelledby="pilot-heading">
-    <h2 id="pilot-heading">Pilot replication (QA)</h2>
-    <p class="note">Response-level accuracy/macro-F1 on the QA-900 cohort, under the cited pilot's own rules (no quality filter; hallucinated = any labeled span, including implicit-true).</p>
-    <h3>This run</h3>
-    <div id="pilot-this-run-wrap"></div>
-    <h3>Cited pilot reference</h3>
-    <div id="pilot-reference-wrap"></div>
-  </section>
-
   <section id="charts-section" aria-labelledby="charts-heading">
     <h2 id="charts-heading">Charts</h2>
     <div class="chart-grid" id="chart-grid">
-      <figure class="chart" data-src="f1_vs_cost.png">
-        <img alt="F1 vs cost per 1,000 judgments, log-scaled cost axis, for each judge and the cascade.">
-        <figcaption>F1 vs cost per 1,000 judgments.</figcaption>
-      </figure>
       <figure class="chart" data-src="reliability.png">
         <img alt="Reliability diagram: Jev's predicted hallucination probability against the observed rate.">
         <figcaption>Calibration (reliability diagram).</figcaption>
@@ -279,10 +369,6 @@
     <div id="case-list"></div>
   </section>
 
-  <section id="audit-section" aria-labelledby="audit-heading">
-    <h2 id="audit-heading">Label audit</h2>
-    <div id="audit-content"></div>
-  </section>
 </main>
 
 <footer class="page-footer">
@@ -356,13 +442,9 @@
     jev_untuned: "Jev (untuned)",
     jev_tuned: "Jev (tuned on train)",
     jev: "Jev (tuned on train)",
-    jev_pilot_setting: "Jev (pilot wording @ 0.5)",
-    jev_pilot_state: "Jev (pilot state keys)",
     claude: "Claude Sonnet 5",
     deepseek: "DeepSeek Flash",
-    deepseek_pilot: "DeepSeek Flash (pilot prompt)",
     glm: "GLM Flash",
-    glm_pilot: "GLM Flash (pilot prompt)",
     jev_tuned_single: "Jev (tuned, single-judge)",
     jev_untuned_single: "Jev (untuned, single-judge)"
   };
@@ -561,53 +643,6 @@
     ));
   }
 
-  // ---------- pilot replication ----------
-  var PILOT_ROW_ORDER = ["jev", "jev_pilot_setting", "jev_pilot_state", "claude", "deepseek", "deepseek_pilot", "glm", "glm_pilot"];
-  function renderPilot(data) {
-    var thisRunWrap = document.getElementById("pilot-this-run-wrap");
-    var refWrap = document.getElementById("pilot-reference-wrap");
-    var run = data.qa_replication_pilot_rules;
-    var ref = data.pilot_reference_qa;
-
-    if (!run) {
-      thisRunWrap.appendChild(na("Not available."));
-    } else {
-      thisRunWrap.appendChild(ce("p", { class: "note" }, [
-        "QA cohort n=" + fmtInt(run.n) + ", positives (any span)=" + fmtInt(run.n_positive) + "."
-      ]));
-      var rows = [];
-      PILOT_ROW_ORDER.forEach(function (key) {
-        var b = run[key];
-        if (!b) return;
-        var extra = key === "jev" && !isNil(b.paraphrase)
-          ? " (wording " + b.paraphrase + " @ " + fmt(b.threshold, 2) + ")" : "";
-        rows.push([
-          judgeLabel(key) + extra, fmtInt(b.n_scored), fmt(b.accuracy), fmt(b.macro_f1),
-          fmtInt(b.missed), fmtInt(b.false_alarms)
-        ]);
-      });
-      if (rows.length) {
-        thisRunWrap.appendChild(buildTable(null, ["Judge", "n scored", "Accuracy", "Macro-F1", "Missed", "False alarms"], rows));
-      } else {
-        thisRunWrap.appendChild(na("No pilot-rule rows scored yet."));
-      }
-    }
-
-    if (!ref) {
-      refWrap.appendChild(na("Not available."));
-    } else {
-      var refRows = Object.keys(ref).map(function (key) {
-        var b = ref[key];
-        return [key, fmt(b.accuracy), fmt(b.macro_f1), fmtInt(b.missed), fmtInt(b.false_alarms)];
-      });
-      refWrap.appendChild(ce("p", { class: "note" }, [
-        "slavadubrov/sgr-judge-bench @ 5e142707, results/pilot/README.md (2026-09-19): RAGTruth QA test, 900 responses (740 clean / 160 hallucinated). Cited, not re-run."
-      ]));
-      refWrap.appendChild(buildTable(null, ["Judge", "Accuracy", "Macro-F1", "Missed", "False alarms"], refRows));
-    }
-  }
-
-  // ---------- charts ----------
   function renderCharts() {
     document.querySelectorAll("#chart-grid figure").forEach(function (fig) {
       var img = fig.querySelector("img");
@@ -738,33 +773,6 @@
     redraw();
   }
 
-  // ---------- label audit ----------
-  function renderAudit(data) {
-    var wrap = document.getElementById("audit-content");
-    var audit = data.audit;
-    if (!audit || !audit.length) {
-      wrap.appendChild(na("Label audit not run."));
-      return;
-    }
-    audit.forEach(function (entry) {
-      var dl = ce("dl", null, []);
-      var fieldOrder = ["id", "verdict", "evidence", "quote", "notes", "source", "response"];
-      var shown = {};
-      fieldOrder.forEach(function (key) {
-        if (entry[key] === undefined) return;
-        shown[key] = true;
-        dl.appendChild(textEl("dt", key));
-        dl.appendChild(textEl("dd", String(entry[key])));
-      });
-      Object.keys(entry).forEach(function (key) {
-        if (shown[key]) return;
-        dl.appendChild(textEl("dt", key));
-        dl.appendChild(textEl("dd", String(entry[key])));
-      });
-      wrap.appendChild(ce("div", { class: "audit-entry" }, [dl]));
-    });
-  }
-
   // ---------- boot ----------
   function showError(msg) {
     var banner = document.getElementById("load-status");
@@ -782,10 +790,8 @@
       renderHeadline(data);
       renderVerdicts(data);
       renderSensitivity(data);
-      renderPilot(data);
       renderCharts();
       renderCases(data);
-      renderAudit(data);
     })
     .catch(function (err) {
       showError("Could not load data/results.json (" + err.message + "). Run `ragverdict bench ragtruth report` to generate it.");
