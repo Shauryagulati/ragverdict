@@ -2711,6 +2711,10 @@
       "seconds": 342.0967909169849,
       "n_computed": 102
     },
+    "claude-thinking": {
+      "seconds": 9000.033009957988,
+      "n_computed": 150
+    },
     "claude": {
       "seconds": 1.2396104580257088,
       "n_computed": 2700
@@ -5837,7 +5841,31 @@
       "cache_hits_ruled_out": true
     }
   },
-  "thinking": null,
+  "thinking": {
+    "n": 150,
+    "auroc_thinking": {
+      "value": 0.8703703703703703,
+      "ci95": [
+        0.806236620795107,
+        0.9281734290760267
+      ]
+    },
+    "auroc_no_thinking": {
+      "value": 0.8886908298673004,
+      "ci95": [
+        0.8343441126370702,
+        0.936119088500785
+      ]
+    },
+    "auroc_diff_thinking_minus_no_thinking": [
+      -0.018320459496930064,
+      -0.06115640237708254,
+      0.023561118570543257
+    ],
+    "cost_per_1k_thinking": 4.2789226666666655,
+    "cost_per_1k_no_thinking": 2.302325333333334,
+    "verdict_inconsistency_rate_thinking": 0.0
+  },
   "claude_live_latency_s": {
     "n": 102,
     "p50": 3.0374358749832027,

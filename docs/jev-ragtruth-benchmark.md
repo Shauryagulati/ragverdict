@@ -99,7 +99,7 @@ Latency (per call, harness-dependent, not a controlled test): Jev p50 0.27 s (8 
 | H7 | Jev's AUROC varies ≥ 0.03 across 6 wordings | AUROC 0.913–0.922 | **Refuted for ranking.** But F1 at the fixed 0.5 cutoff varies 0.699–0.763 across wordings, so the cutoff has to be set per wording |
 | H8 | Jev flip rate ≈ 0; Claude > 1% | Jev 0/102 (CI to 3.6%; cache hits ruled out); Claude 6/102 (5.9% [2.7%, 12.2%], Wilson) | Confirmed. Claude's temperature can't be set via the API; DeepSeek/GLM not tested |
 | H10 | When Jev and Claude agree, precision > 0.85 | both-flag precision 0.684 (default Jev) / 0.775 (tuned Jev) | Refuted |
-| H11 | Thinking-on Claude gains < 0.03 AUROC at ≥3× cost | — | Pending at time of writing |
+| H11 | Thinking-on Claude gains < 0.03 AUROC at ≥3× cost | same 150 answers: AUROC 0.870 (thinking on) vs 0.889 (off), diff −0.018 [−0.061, +0.024]; batch cost $4.28 vs $2.30 per 1k (1.9×) | **Accuracy half confirmed:** no gain, and the CI's upper end (+0.024) is below 0.03. **Cost half refuted:** 1.9×, not ≥3× |
 | H12 | ≥25% of confident disagreements are label errors | — | Not run |
 
 H2–H12 are exploratory: no multiplicity correction, descriptive where n < 50. H6, H8 and H10 CIs are Wilson intervals where noted (a deviation from the registered bootstrap; the bootstrap intervals are in summary.json where computed).
@@ -201,7 +201,7 @@ Three of the 20 human labels looked debatable, and in one only Jev was arguably 
 - **Numeric-span definition, fixed after results:** month names are now matched case-sensitively, so "may"/"march" no longer count as dates. This affected 22 of 894 hallucinated answers; H2 stayed inconclusive (before: −0.025 [−0.054, +0.003]).
 - **CIs:** some reported CIs are Wilson intervals rather than the registered cluster bootstrap (marked where used).
 - **Claude wall clock:** the recorded value covers only the resumed download, because the original polling process was interrupted.
-- **Pending and not run:** H11 was pending and H12 was not run at the time of writing.
+- **Late result and not run:** H11's batch finished after the first version of this write-up; its row was added afterwards and no other number changed. H12 was not run.
 
 ### FAQ
 - **"You tuned Jev and not the LLMs."** The headline is defaults vs defaults. Even at test-optimal cutoffs (optimistic for all), the LLMs peak at F1 0.748–0.757 vs Jev's 0.797. But at the LLMs' own operating points they're equal or better.
