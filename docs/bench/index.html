@@ -253,6 +253,7 @@
   <section id="cases-section" aria-labelledby="cases-heading">
     <h2 id="cases-heading">Case explorer</h2>
     <p class="note">Cases where untuned Jev and Claude disagree, or where both are wrong against the human label.</p>
+    <p id="sources-excerpted-note" class="note"></p>
     <p id="sources-truncated-note" class="note"></p>
     <div class="filters">
       <div class="filter-field">
@@ -710,6 +711,11 @@
     var truncNote = document.getElementById("sources-truncated-note");
     truncNote.textContent = data.sources_truncated
       ? "Some case sources were truncated to keep results.json a reasonable size; responses (and highlighted spans) are shown in full."
+      : "";
+
+    var excerptNote = document.getElementById("sources-excerpted-note");
+    excerptNote.textContent = data.sources_excerpted
+      ? "Sources are excerpts; full text: RAGTruth, ParticleMedia/RAGTruth@c103204b"
       : "";
 
     function redraw() {

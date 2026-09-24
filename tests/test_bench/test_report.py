@@ -219,8 +219,9 @@ def test_headline_table_partial_run_includes_macro_f1(tmp_path: Path) -> None:
 
 
 def test_export_truncates_sources_past_size_limit(tmp_path: Path) -> None:
-    """A tiny max_bytes forces truncation: each case's source is cut to 4,000 chars with a
-    "… [truncated]" suffix, response stays untruncated, and sources_truncated is recorded."""
+    """A tiny max_bytes still forces the legacy size-guard truncation path (source cut to
+    4,000 chars, sources_truncated recorded) — even though every case source is already a
+    600-char excerpt by then, so this guard is now a no-op on source length specifically."""
     huge_source = "x" * 20_000
     exs = [
         replace(_ex(1), source=huge_source),  # hallucinated
@@ -239,8 +240,27 @@ def test_export_truncates_sources_past_size_limit(tmp_path: Path) -> None:
     assert data["sources_truncated"] is True
     assert len(data["cases"]) == 2
     for case in data["cases"]:
-        assert case["source"] == "x" * 4_000 + "… [truncated]"
+        assert case["source"] == "x" * 600 + "… [excerpt; full source in RAGTruth @ c103204b]"
         assert case["response"] == f"response text {case['id']}"
+
+
+def test_export_excerpts_case_sources(tmp_path: Path) -> None:
+    """Every case source is shipped as a 600-char excerpt with the licensing note, never
+    the full source, regardless of the size guard — and sources_excerpted is always true."""
+    exs = [_ex(1), _ex(2)]  # 1: hallucinated, 2: clean
+    summary = _full_summary(tmp_path / "summary_store")
+    store = PredictionStore(tmp_path / "cases_store")
+    for eid, jev_score in (("1", 0.1), ("2", 0.1)):
+        store.append(Prediction(run=HEADLINE_JEV_RUN, example_id=eid, repeat=0, score=jev_score))
+        store.append(Prediction(run="claude", example_id=eid, repeat=0, score=1.0,
+                                supported_claims=2, total_claims=2, reasoning="fine"))
+    data = json.loads(export(exs, store, summary, 0.5, tmp_path / "docs").read_text())
+    assert data["sources_excerpted"] is True
+    for case in data["cases"]:
+        original_source = next(e.source for e in exs if e.id == case["id"])
+        assert case["source"] == (
+            original_source[:600] + "… [excerpt; full source in RAGTruth @ c103204b]"
+        )
 
 
 def test_export_no_truncation_flag_false_when_under_limit(tmp_path: Path) -> None:

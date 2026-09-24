@@ -89,13 +89,21 @@ def _cases(
             "jev_p": jev_p.score, "jev_verdict": jev_says,
             "claude_score": claude_p.score, "claude_verdict": claude_says,
             "claude_reasoning": claude_p.reasoning,
-            "source": e.source, "response": e.response,
+            "source": e.source[:SOURCE_EXCERPT_CHARS] + SOURCE_EXCERPT_SUFFIX,
+            "response": e.response,
         })
     return cases
 
 
 SOURCE_TRUNCATE_CHARS = 4_000
 TRUNCATION_SUFFIX = "… [truncated]"
+
+# RAGTruth's `source` field is drawn from third-party corpora (news articles, MARCO
+# passages, …) that we don't have redistribution rights to beyond what's needed to make
+# the case findable. Every case ships only a short excerpt, never the full source, so the
+# results page can't be used to reconstruct copyrighted source documents.
+SOURCE_EXCERPT_CHARS = 600
+SOURCE_EXCERPT_SUFFIX = "… [excerpt; full source in RAGTruth @ c103204b]"
 
 
 def export(
@@ -121,6 +129,9 @@ def export(
         "cases": cases,
         "audit": audit,
         "sources_truncated": False,
+        # Every case source is already an excerpt (see SOURCE_EXCERPT_CHARS above) —
+        # always true, unlike sources_truncated below, which only fires on the size guard.
+        "sources_excerpted": True,
     }
     encoded = json.dumps(payload).encode()
     if len(encoded) > max_bytes:
