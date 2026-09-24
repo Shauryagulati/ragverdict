@@ -167,6 +167,7 @@ def test_question_and_passages_populated_for_qa(tmp_path: Path) -> None:
 @pytest.mark.parametrize(("text", "expected"), [
     ("$5.2M", True), ("in 2022", True), ("on March 3", True), ("the CEO resigned", False),
     ("Mayor of Springfield", False),
+    ("it may help", False), ("in May 2020", True), ("they march on", False),
 ])
 def test_is_numeric_span(text: str, expected: bool) -> None:
     assert is_numeric_span(text) is expected

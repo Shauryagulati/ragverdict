@@ -2,7 +2,9 @@
 
 Label rule: a response is hallucinated iff it has at least one annotated span with
 `implicit_true == false` (implicit_true spans are correct-but-unstated information).
-Only `quality == "good"` responses are kept.
+`load_examples(..., quality="good")` (the default) keeps only `quality == "good"`
+responses; pass `quality="all"` to also keep `incorrect_refusal` and `truncated`
+responses (used to replicate the 2026-09-19 pilot's cohort, which kept everything).
 """
 
 from __future__ import annotations
@@ -27,9 +29,11 @@ _RAW_URL = "https://raw.githubusercontent.com/ParticleMedia/RAGTruth/{commit}/da
 DEFAULT_CACHE = Path.home() / ".cache" / "ragverdict" / "ragtruth" / RAGTRUTH_COMMIT
 
 _MONTHS = (
-    "january|february|march|april|may|june|july|august|september|october|november|december"
+    "January|February|March|April|May|June|July|August|September|October|November|December"
 )
-_NUMERIC_RE = re.compile(rf"\d|\b({_MONTHS})\b", re.IGNORECASE)
+# Case-sensitive: capitalized month names only. re.IGNORECASE would make the modal verb
+# "may" (and lowercase "march", as in "they march on") match as a date.
+_NUMERIC_RE = re.compile(rf"\d|\b({_MONTHS})\b")
 
 
 class DatasetError(Exception):
