@@ -184,6 +184,104 @@ After each run, two files land in `./report/` (override with `--out-dir`):
   per-citation audit detail. Stable shape — see [`docs/json-report-schema.md`](./docs/json-report-schema.md).
 - **`report.md`** — Human-readable summary table.
 
+## Judge backends
+
+`judge.provider` in `config.yaml` selects the scorer. All three backends speak the same
+`Judge` protocol (`faithfulness`, `relevance`, `refusal`, `pushback`), so nothing else in
+your config changes when you switch.
+
+### `anthropic` (default)
+
+```yaml
+judge:
+  provider: anthropic
+  model: claude-sonnet-4-6
+```
+
+Requires `ANTHROPIC_API_KEY`. Unchanged from earlier releases.
+
+### `jev`
+
+```yaml
+judge:
+  provider: jev
+  jev_model: typesafe/jev-1.13
+  jev_base_url: https://openrouter.ai/api
+
+thresholds:
+  faithfulness_pass: 0.5
+  faithfulness_weak: 0.2
+```
+
+Requires `OPENROUTER_API_KEY` (or `TYPESAFE_API_KEY` if you point `jev_base_url` at
+`https://api.typesafe.ai` instead). Jev is a lightweight probabilistic classifier, not an
+LLM — read this before switching:
+
+- **(a)** With `jev`, the faithfulness score is Jev's probability that the response is
+  fully supported. It is **not** a claim fraction the way Claude's score is.
+- **(b)** The default `thresholds` (`faithfulness_pass: 0.85`, `faithfulness_weak: 0.7`)
+  were set for Claude's claim-fraction score and are too strict for Jev. Set them from a
+  labeled sample of your own data; a conservative starting point for the default
+  faithfulness question is `faithfulness_pass: 0.5`, `faithfulness_weak: 0.2`. `ragverdict`
+  warns on stderr if you run `jev`/`cascade` with the untouched Claude-calibrated defaults.
+- **(c)** The [RAGTruth benchmark](#benchmark) validated only the faithfulness question.
+  Jev's relevance, refusal, and pushback questions are unvalidated.
+- **(d)** Jev returns no explanation — `reasoning` on its results just records the model
+  and raw probability, not a rationale.
+- **(e)** If you use `cascade`, `cascade_band` must straddle your decision thresholds,
+  e.g. band `[0.1, 0.6]` with the thresholds above.
+- **(f)** The benchmark's own tuned configuration used a different question wording
+  ("B") and threshold `0.165`, chosen by fitting on the benchmark's train split — not
+  something to copy blind onto your data. See
+  [docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md) for the wording and
+  method.
+
+### `cascade`
+
+```yaml
+judge:
+  provider: cascade
+  model: claude-sonnet-4-6       # fallback, asked only when Jev is unsure
+  jev_model: typesafe/jev-1.13
+  jev_base_url: https://openrouter.ai/api
+  cascade_band: [0.1, 0.6]        # straddles the thresholds below
+
+thresholds:
+  faithfulness_pass: 0.5
+  faithfulness_weak: 0.2
+```
+
+Asks Jev first; escalates to the Anthropic model only when Jev's probability falls
+strictly inside `cascade_band`. Requires both `OPENROUTER_API_KEY` (or
+`TYPESAFE_API_KEY`) and `ANTHROPIC_API_KEY`. See the Jev guidance above — it applies to
+`cascade` too whenever Jev's score is used directly.
+
+See [`examples/demo_rag/config.jev.yaml`](./examples/demo_rag/config.jev.yaml) for a
+complete worked example.
+
+## Benchmark
+
+**Benchmark: Jev vs LLM judges on RAGTruth.** On 2,666 human-labeled RAG answers (RAGTruth
+test set), Jev's untuned F1 was 0.758 [95% CI 0.734–0.782], vs Claude Sonnet 5 0.721
+[0.697–0.748], GLM Flash 0.753 and DeepSeek Flash 0.708, at roughly 1/50th of Claude's
+batch cost and ~11× lower latency. The pre-registered Jev-vs-Claude equivalence test was
+inconclusive (direction favors Jev). At matched strictness the two are statistically
+similar. A Jev→Claude cascade added nothing over Jev alone. Full method, pre-registration,
+limitations and reproduction: [docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md).
+Interactive case explorer: `docs/bench/index.html`.
+
+![Jev vs Claude Sonnet 5, GLM Flash and DeepSeek Flash: F1 vs cost per 1,000 judgments](docs/bench/f1_vs_cost.png)
+
+To reproduce or explore the benchmark yourself:
+
+```bash
+pip install "ragverdict[bench]"
+```
+
+`ragverdict bench ragtruth ...` must be run from the root of a clone (not a `pip install`
+of the package) — it reads `bench/frozen_config.json` and `scripts/verify_bench.py`, which
+aren't shipped in the PyPI distribution.
+
 ## FAQ
 
 ### When should I use ragverdict vs RAGAs / DeepEval / TruLens?
@@ -236,9 +334,12 @@ for RAG, not metrics for RAG."
 ### Can I use a model other than Claude for the judge?
 
 The judge is configurable via `judge.model` in `config.yaml` (defaults to
-`claude-sonnet-4-6`). Any current Anthropic model works out of the box. Other
-providers require swapping `LLMJudge` for a sibling implementation — the runner
-accepts any object that satisfies the judge interface.
+`claude-sonnet-4-6`). Any current Anthropic model works out of the box. Set
+`judge.provider` to switch backends entirely — `jev` (a lightweight probabilistic
+judge) and `cascade` (Jev first, escalating to Claude when unsure) ship built in.
+See [Judge backends](#judge-backends) below. Any object that satisfies the `Judge`
+protocol (`faithfulness`, `relevance`, `refusal`, `pushback`) works, so you can also
+write your own.
 
 ### How do I integrate this into GitHub Actions?
 
@@ -256,11 +357,12 @@ live-judge CI runs, set `ANTHROPIC_API_KEY` as a repo secret and drop the
 
 ### Does prompt caching actually fire?
 
-The wiring is correct on every judge rubric (`cache_control={"type": "ephemeral"}`),
-but Sonnet 4.6's minimum cacheable prefix is 2048 tokens and current rubrics are
-400-600 tokens. Caching activates as rubrics grow (more examples) or on models with
-smaller minimums. Documented honestly in `LLMJudge`'s module docstring rather than
-silently shipping a feature that doesn't fire yet.
+Yes. Verified 2026-09-22: on Claude Sonnet 5, the ~1,200-token faithfulness rubric is
+served from cache (`cache_read_input_tokens=1202` on repeat calls). The wiring is
+`cache_control={"type": "ephemeral"}` on every judge rubric. The older caveat — that a
+model's minimum cacheable prefix (e.g. 2048 tokens on some models) can exceed a short
+rubric — still applies on models with a larger minimum than the rubric length; caching
+activates as rubrics grow or on models with a smaller minimum.
 
 ## Roadmap
 
