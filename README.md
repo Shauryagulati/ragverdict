@@ -262,13 +262,16 @@ complete worked example.
 ## Benchmark
 
 **Benchmark: Jev vs LLM judges on RAGTruth.** On 2,666 human-labeled RAG answers (RAGTruth
-test set), Jev's untuned F1 was 0.758 [95% CI 0.734–0.782], vs Claude Sonnet 5 0.721
-[0.697–0.748], GLM Flash 0.753 and DeepSeek Flash 0.708, at roughly 1/50th of Claude's
-batch cost and ~11× lower latency. The pre-registered Jev-vs-Claude equivalence test was
-inconclusive (direction favors Jev). At matched strictness the two are statistically
-similar. A Jev→Claude cascade added nothing over Jev alone. Full method, pre-registration,
-limitations and reproduction: [docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md).
-Interactive case explorer: `docs/bench/index.html`.
+test set), with each judge at its default setting, Jev's F1 was 0.758 [95% CI 0.734–0.782] vs
+Claude Sonnet 5 0.721 [0.697–0.748], GLM Flash 0.753 and DeepSeek Flash 0.708. The registered
+Jev-vs-Claude test was inconclusive (+0.037, 90% CI +0.023 to +0.050, margin ±0.03), Jev tied
+GLM and beat DeepSeek. At each LLM's own operating point the LLM was equal or slightly better:
+Jev's edge comes from its default cutoff and a finer-grained score. Jev cost $0.046 per 1,000
+judgments vs $6.54 for Claude at standard list price, but it caught far fewer hallucinations
+written by GPT-4/GPT-3.5 (small n), and its default cutoff needs calibrating on your own data.
+A Jev→Claude cascade added no F1. Full method, registration, limitations and reproduction:
+[docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md). Interactive case explorer:
+`docs/bench/index.html`.
 
 ![Jev vs Claude Sonnet 5, GLM Flash and DeepSeek Flash: F1 vs cost per 1,000 judgments](docs/bench/f1_vs_cost.png)
 

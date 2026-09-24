@@ -1,0 +1,522 @@
+{
+  "frozen_config": {
+    "jev_model": "typesafe/jev-1.13",
+    "jev_paraphrase": "B",
+    "jev_threshold": 0.165,
+    "claude_model": "claude-sonnet-5",
+    "claude_rule": "score<1.0 or supported<total",
+    "cascade_band": [
+      0.065,
+      0.265
+    ],
+    "cascade_band_sweep": [
+      [
+        0.115,
+        0.215
+      ],
+      [
+        0.065,
+        0.265
+      ],
+      [
+        0.015,
+        0.315
+      ],
+      [
+        0.0,
+        0.365
+      ],
+      [
+        0.0,
+        0.415
+      ],
+      [
+        0.0,
+        0.465
+      ],
+      [
+        0.0,
+        0.565
+      ]
+    ],
+    "dataset_commit": "c103204b9ce28d6bbad859304bf30de72b8ed8fe",
+    "bootstrap_resamples": 1000,
+    "bootstrap_seed": 0,
+    "registered": true
+  },
+  "primary_cohort": {
+    "n": 2675,
+    "n_positive": 894
+  },
+  "headline_cohort": {
+    "n": 2666,
+    "n_positive": 891,
+    "runs": [
+      "jev-para-A",
+      "jev",
+      "claude",
+      "deepseek",
+      "glm"
+    ]
+  },
+  "disagreement_untuned_vs_claude": {
+    "n": 373,
+    "jev_right": 259,
+    "claude_right": 114,
+    "claude_flags_jev_passes": {
+      "n": 306,
+      "n_human_clean": 255
+    },
+    "jev_flags_claude_passes": {
+      "n": 67,
+      "n_human_clean": 63
+    },
+    "notes": "n_human_clean = RAGTruth label is clean; for claude_flags_jev_passes that means Jev is right, for jev_flags_claude_passes Claude is right."
+  },
+  "agreement_precision": {
+    "jev_untuned_vs_claude": {
+      "n_agree": 2293,
+      "agree_rate": 0.8600900225056264,
+      "accuracy_when_agree": 0.8242477104230266,
+      "n_both_flag": 1179,
+      "precision_when_both_flag": 0.6836301950805768,
+      "n_both_pass": 1114,
+      "clean_rate_when_both_pass": 0.9730700179533214
+    },
+    "jev_tuned_vs_claude": {
+      "n_agree": 2104,
+      "agree_rate": 0.7891972993248312,
+      "accuracy_when_agree": 0.8845057034220533,
+      "n_both_flag": 928,
+      "precision_when_both_flag": 0.7747844827586207,
+      "n_both_pass": 1176,
+      "clean_rate_when_both_pass": 0.9710884353741497
+    }
+  },
+  "generator_recall_at_operating_points": {
+    "gpt-3.5-turbo-0613": {
+      "n_pos": 42,
+      "jev_untuned": 0.5,
+      "jev_tuned": 0.23809523809523808,
+      "claude": 0.8333333333333334,
+      "deepseek": 0.8809523809523809,
+      "glm": 0.5238095238095238
+    },
+    "gpt-4-0613": {
+      "n_pos": 40,
+      "jev_untuned": 0.425,
+      "jev_tuned": 0.1,
+      "claude": 0.65,
+      "deepseek": 0.8,
+      "glm": 0.6
+    },
+    "llama-2-13b-chat": {
+      "n_pos": 196,
+      "jev_untuned": 0.9540816326530612,
+      "jev_tuned": 0.8979591836734694,
+      "claude": 0.9795918367346939,
+      "deepseek": 0.9693877551020408,
+      "glm": 0.9540816326530612
+    },
+    "llama-2-70b-chat": {
+      "n_pos": 161,
+      "jev_untuned": 0.937888198757764,
+      "jev_tuned": 0.8695652173913043,
+      "claude": 0.968944099378882,
+      "deepseek": 0.9813664596273292,
+      "glm": 0.9627329192546584
+    },
+    "llama-2-7b-chat": {
+      "n_pos": 214,
+      "jev_untuned": 0.9532710280373832,
+      "jev_tuned": 0.8457943925233645,
+      "claude": 0.9813084112149533,
+      "deepseek": 0.985981308411215,
+      "glm": 0.9579439252336449
+    },
+    "mistral-7B-instruct": {
+      "n_pos": 238,
+      "jev_untuned": 0.9663865546218487,
+      "jev_tuned": 0.8739495798319328,
+      "claude": 1.0,
+      "deepseek": 0.9957983193277311,
+      "glm": 0.9747899159663865
+    }
+  },
+  "severity_recall_at_operating_points": {
+    "evident": {
+      "n_pos": 861,
+      "jev_untuned": 0.9210220673635308,
+      "jev_tuned": 0.8199767711962834,
+      "claude": 0.9663182346109176,
+      "deepseek": 0.975609756097561,
+      "glm": 0.9349593495934959
+    },
+    "subtle": {
+      "n_pos": 30,
+      "jev_untuned": 0.5666666666666667,
+      "jev_tuned": 0.43333333333333335,
+      "claude": 0.8333333333333334,
+      "deepseek": 0.8333333333333334,
+      "glm": 0.6666666666666666
+    }
+  },
+  "false_alarms_on_headline_cohort": {
+    "jev_untuned": {
+      "fp": 436,
+      "n_negative": 1775,
+      "fpr": 0.24563380281690142
+    },
+    "jev_tuned": {
+      "fp": 214,
+      "n_negative": 1775,
+      "fpr": 0.12056338028169014
+    },
+    "claude": {
+      "fp": 628,
+      "n_negative": 1775,
+      "fpr": 0.35380281690140847
+    },
+    "deepseek": {
+      "fp": 686,
+      "n_negative": 1775,
+      "fpr": 0.38647887323943664
+    },
+    "glm": {
+      "fp": 474,
+      "n_negative": 1775,
+      "fpr": 0.26704225352112676
+    }
+  },
+  "always_flag_baseline": {
+    "headline_cohort": {
+      "overall": {
+        "n": 2666,
+        "precision": 0.3342085521380345,
+        "recall": 1.0,
+        "f1": 0.5009839752600507,
+        "macro_f1": 0.25049198763002534
+      },
+      "by_task": {
+        "Data2txt": {
+          "n": 893,
+          "precision": 0.6293393057110862,
+          "recall": 1.0,
+          "f1": 0.7725085910652921,
+          "macro_f1": 0.38625429553264606
+        },
+        "QA": {
+          "n": 874,
+          "precision": 0.15331807780320367,
+          "recall": 1.0,
+          "f1": 0.26587301587301587,
+          "macro_f1": 0.13293650793650794
+        },
+        "Summary": {
+          "n": 899,
+          "precision": 0.21690767519466073,
+          "recall": 1.0,
+          "f1": 0.356489945155393,
+          "macro_f1": 0.1782449725776965
+        }
+      }
+    },
+    "primary_cohort": {
+      "overall": {
+        "n": 2675,
+        "precision": 0.3342056074766355,
+        "recall": 1.0,
+        "f1": 0.5009806668534603,
+        "macro_f1": 0.25049033342673016
+      },
+      "by_task": {
+        "Data2txt": {
+          "n": 900,
+          "precision": 0.6266666666666667,
+          "recall": 1.0,
+          "f1": 0.7704918032786886,
+          "macro_f1": 0.3852459016393443
+        },
+        "QA": {
+          "n": 875,
+          "precision": 0.15314285714285714,
+          "recall": 1.0,
+          "f1": 0.26560951437066405,
+          "macro_f1": 0.13280475718533202
+        },
+        "Summary": {
+          "n": 900,
+          "precision": 0.21777777777777776,
+          "recall": 1.0,
+          "f1": 0.3576642335766423,
+          "macro_f1": 0.17883211678832114
+        }
+      }
+    }
+  },
+  "oracle_best_f1": {
+    "notes": "test-optimal threshold chosen on the very data it is scored on: optimistic upper bound, not a deployable number. Swept rule: hallucinated iff P(supported) < t (LLMs: supported-claim fraction < t; ties flagged together).",
+    "jev_untuned": {
+      "threshold": 0.225,
+      "f1": 0.7968217934165721,
+      "n_flagged": 871,
+      "f1_at_own_rule": 0.7580720636406177
+    },
+    "jev_tuned": {
+      "threshold": 0.185,
+      "f1": 0.7920258620689655,
+      "n_flagged": 965,
+      "f1_at_own_rule": 0.7883771929824561
+    },
+    "claude": {
+      "threshold": 0.84,
+      "f1": 0.7478344562078922,
+      "n_flagged": 1187,
+      "f1_at_own_rule": 0.7213804713804715
+    },
+    "deepseek": {
+      "threshold": 0.795,
+      "f1": 0.7574382249117498,
+      "n_flagged": 1092,
+      "f1_at_own_rule": 0.7084357084357085
+    },
+    "glm": {
+      "threshold": 0.925,
+      "f1": 0.7543859649122807,
+      "n_flagged": 1275,
+      "f1_at_own_rule": 0.7534246575342466
+    }
+  },
+  "f1_at_matched_flag_rate": {
+    "claude": {
+      "llm_n_flagged": 1485,
+      "llm_f1": 0.7213804713804715,
+      "jev_untuned_threshold": 0.625,
+      "jev_untuned_n_flagged": 1481,
+      "jev_untuned_f1": 0.7116357504215851
+    },
+    "deepseek": {
+      "llm_n_flagged": 1551,
+      "llm_f1": 0.7084357084357085,
+      "jev_untuned_threshold": 0.665,
+      "jev_untuned_n_flagged": 1549,
+      "jev_untuned_f1": 0.6959016393442623
+    },
+    "glm": {
+      "llm_n_flagged": 1299,
+      "llm_f1": 0.7534246575342466,
+      "jev_untuned_threshold": 0.525,
+      "jev_untuned_n_flagged": 1293,
+      "jev_untuned_f1": 0.7490842490842491
+    }
+  },
+  "jev_score_jitter": {
+    "run": "jev-flip",
+    "repeats": [
+      0,
+      1,
+      2
+    ],
+    "n": 102,
+    "n_changed": 74,
+    "median": 0.010000000000000009,
+    "p90": 0.04999999999999993,
+    "max": 0.10999999999999988,
+    "n_verdict_flips_at_tuned_threshold": 0,
+    "near_tuned_threshold": {
+      "run": "jev",
+      "window": 0.03,
+      "n_scored": 2675,
+      "n_within": 120,
+      "fraction": 0.044859813084112146
+    }
+  },
+  "cascade_detail": {
+    "band": [
+      0.065,
+      0.265
+    ],
+    "threshold": 0.165,
+    "cascade": {
+      "recall": 0.8720538720538721,
+      "fp": 302,
+      "fpr": 0.17014084507042254,
+      "f1": 0.7888324873096446
+    },
+    "jev_tuned": {
+      "recall": 0.8069584736251403,
+      "fp": 214,
+      "fpr": 0.12056338028169014,
+      "f1": 0.7883771929824561
+    },
+    "within_band": {
+      "n": 479,
+      "escalation_rate": 0.17966991747936983,
+      "claude_flag_rate": 0.9498956158663883,
+      "claude_accuracy": 0.5302713987473904,
+      "jev_tuned_accuracy": 0.592901878914405
+    },
+    "cost_usd_per_1k": {
+      "jev_billed": 0.04644919579894979,
+      "claude_escalations_standard_uncached": 1.2232558139534884,
+      "cascade_total": 1.269705009752438,
+      "claude_alone_standard_uncached": 6.538155288822206,
+      "notes": "Claude rows' tokens at $2.0/$10.0 per MTok, every input token (incl. cache reads/writes) at the input price; Jev = run 'jev' OpenRouter-billed cost on every example."
+    }
+  },
+  "ece": {
+    "notes": "P(hallucinated) = 1 - P(supported), primary cohort",
+    "jev-para-A": {
+      "n": 2675,
+      "ece_10_bins": 0.16804859813084175
+    },
+    "jev": {
+      "n": 2675,
+      "ece_10_bins": 0.2308037383177593
+    }
+  },
+  "tune_set_prevalence": {
+    "tune": {
+      "n": 600,
+      "n_positive": 232,
+      "prevalence": 0.38666666666666666
+    },
+    "primary_test": {
+      "n": 2675,
+      "n_positive": 894,
+      "prevalence": 0.3342056074766355
+    }
+  },
+  "pooled_by_task_contribution": {
+    "pooled_f1": {
+      "jev_untuned": 0.7580720636406177,
+      "jev_tuned": 0.7883771929824561,
+      "claude": 0.7213804713804715,
+      "deepseek": 0.7084357084357085,
+      "glm": 0.7534246575342466
+    },
+    "by_task": {
+      "Data2txt": {
+        "n": 893,
+        "n_pos": 562,
+        "share_of_positives": 0.6307519640852974,
+        "f1": {
+          "jev_untuned": 0.8482871125611745,
+          "jev_tuned": 0.8657777777777779,
+          "claude": 0.8614173228346457,
+          "deepseek": 0.8258928571428572,
+          "glm": 0.8853556485355648
+        }
+      },
+      "QA": {
+        "n": 874,
+        "n_pos": 134,
+        "share_of_positives": 0.15039281705948374,
+        "f1": {
+          "jev_untuned": 0.5347368421052631,
+          "jev_tuned": 0.6149584487534625,
+          "claude": 0.4951644100580271,
+          "deepseek": 0.4933586337760911,
+          "glm": 0.5414847161572053
+        }
+      },
+      "Summary": {
+        "n": 899,
+        "n_pos": 195,
+        "share_of_positives": 0.21885521885521886,
+        "f1": {
+          "jev_untuned": 0.7477064220183488,
+          "jev_tuned": 0.7159763313609467,
+          "claude": 0.6179966044142615,
+          "deepseek": 0.6304728546409808,
+          "glm": 0.6405959031657356
+        }
+      }
+    }
+  },
+  "production_base_rate_precision": {
+    "jev_untuned": {
+      "tpr": 0.9090909090909091,
+      "fpr": 0.24563380281690142,
+      "precision_at_5pct": 0.1630324962801036,
+      "precision_at_10pct": 0.29139442492694617
+    },
+    "jev_tuned": {
+      "tpr": 0.8069584736251403,
+      "fpr": 0.12056338028169014,
+      "precision_at_5pct": 0.26050559794375666,
+      "precision_at_10pct": 0.42650430723482446
+    },
+    "claude": {
+      "tpr": 0.9618406285072951,
+      "fpr": 0.35380281690140847,
+      "precision_at_5pct": 0.12517293642909116,
+      "precision_at_10pct": 0.23198874137634173
+    },
+    "deepseek": {
+      "tpr": 0.9708193041526375,
+      "fpr": 0.38647887323943664,
+      "precision_at_5pct": 0.11677037424852661,
+      "precision_at_10pct": 0.21820434258440632
+    },
+    "glm": {
+      "tpr": 0.9259259259259259,
+      "fpr": 0.26704225352112676,
+      "precision_at_5pct": 0.15432796474888452,
+      "precision_at_10pct": 0.27811377752151273
+    }
+  },
+  "paired_untuned_vs_glm_deepseek": {
+    "resamples": 1000,
+    "seed": 0,
+    "groups": "source_id",
+    "jev_untuned_minus_glm": {
+      "diff": 0.004647406106371155,
+      "ci95": [
+        -0.009580919878724151,
+        0.019478126903138063
+      ]
+    },
+    "jev_untuned_minus_deepseek": {
+      "diff": 0.04963635520490928,
+      "ci95": [
+        0.03407080642747248,
+        0.06566281779983177
+      ]
+    }
+  },
+  "wording_f1_at_default_cutoff": {
+    "threshold": 0.5,
+    "notes": "scores are P(supported) for every wording (inverted wordings reoriented at scoring time)",
+    "jev-para-A": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.7580720636406177
+    },
+    "jev-para-B": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.7198627198627199
+    },
+    "jev-para-C": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.762576398683592
+    },
+    "jev-para-D": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.737410071942446
+    },
+    "jev-para-E": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.7279860505666956
+    },
+    "jev-para-P": {
+      "n": 2666,
+      "n_missing": 0,
+      "f1": 0.6992543496271748
+    }
+  }
+}

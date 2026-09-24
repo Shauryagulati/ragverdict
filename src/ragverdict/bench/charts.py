@@ -44,7 +44,7 @@ LABELS = {
 
 def _save(fig: Any, path: Path) -> Path:
     fig.tight_layout()
-    fig.savefig(path, dpi=200)
+    fig.savefig(path, dpi=200, bbox_inches="tight")
     plt.close(fig)
     return path
 
@@ -95,22 +95,27 @@ def _f1_vs_cost(summary: dict[str, Any], out_dir: Path) -> Path | None:
     if cascade:
         ax.plot(cascade["cost_usd_per_1k"], cascade["f1"], "s", color=COLORS["cascade"],
                 label="Cascade")
+    ax.set_xscale("log")
     for label, f1 in PUBLISHED_F1.items():
         ax.axhline(f1 / 100, color="#9ca3af", linestyle=":", linewidth=1)
-        ax.text(ax.get_xlim()[0] if ax.get_xlim()[0] > 0 else 0.01, f1 / 100 + 0.005,
-                f"{label} (published)", fontsize=7, color="#6b7280")
-    ax.set_xscale("log")
+        # x in axes coordinates (right edge), y in data coordinates: labels stay inside the plot
+        ax.text(0.99, f1 / 100 + 0.003, f"{label} (published; not a controlled comparison)",
+                transform=ax.get_yaxis_transform(), ha="right", va="bottom",
+                fontsize=7, color="#6b7280")
     ax.set_xlabel("Cost per 1,000 judgments (USD, log scale)")
     ax.set_ylabel("F1 (hallucination detection)")
     if is_headline:
         n = summary["headline"]["cohort"]["n"]
-        ax.set_title(f"RAGTruth test set (n={n}, untuned Jev vs each LLM judge)")
+        ax.set_title(f"RAGTruth test set (n={n}): each judge at its default setting")
     else:
         ax.set_title(
             f"RAGTruth test set (n={summary.get('n_test')}) — partial run, each judge's own "
             "cohort (no common intersection yet)"
         )
-    ax.legend()
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8, framealpha=0.9)
+    fig.text(0.01, -0.02, "Cost: billed (Jev, DeepSeek, GLM via OpenRouter); Claude at Batch API +\n"
+             "prompt-cache prices (standard live about 2.9x higher). Tuned Jev is not comparable\n"
+             "to the untuned rows.", fontsize=6, color="#6b7280", va="top")
     return _save(fig, out_dir / "f1_vs_cost.png")
 
 
