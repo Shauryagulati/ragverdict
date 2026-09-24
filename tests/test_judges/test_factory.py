@@ -58,3 +58,41 @@ def test_runner_without_jev_key_runs_without_judge(
 
 def test_runner_builds_cascade_when_keys_present(keys: None, tmp_path: Path) -> None:
     assert isinstance(Runner(_config("cascade"), tmp_path).judge, CascadeJudge)
+
+
+@pytest.mark.parametrize("provider", ["jev", "cascade"])
+def test_runner_warns_on_default_thresholds_with_jev_provider(
+    keys: None, tmp_path: Path, capsys: pytest.CaptureFixture[str], provider: str
+) -> None:
+    Runner(_config(provider), tmp_path)
+    err = capsys.readouterr().err
+    assert "faithfulness_pass" in err and "faithfulness_weak" in err
+    assert "claim-fraction" in err
+    assert "Judge backends" in err  # points at the README section
+
+
+def test_runner_does_not_warn_when_thresholds_are_customized(
+    keys: None, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cfg = Config.model_validate({
+        "adapter": {"type": "python", "module": "m", "class": "C"},
+        "judge": {"provider": "jev"},
+        "thresholds": {"faithfulness_pass": 0.5, "faithfulness_weak": 0.2},
+    })
+    Runner(cfg, tmp_path)
+    assert "faithfulness_pass" not in capsys.readouterr().err
+
+
+def test_runner_does_not_warn_for_anthropic_provider(
+    keys: None, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Runner(_config("anthropic"), tmp_path)
+    assert "faithfulness_pass" not in capsys.readouterr().err
+
+
+def test_runner_warns_only_once(
+    keys: None, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Runner(_config("jev"), tmp_path)
+    err = capsys.readouterr().err
+    assert err.count("faithfulness_pass") == 1

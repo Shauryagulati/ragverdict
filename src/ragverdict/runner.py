@@ -18,6 +18,11 @@ from ragverdict.judges.llm_judge import LLMJudge
 # Sentinel for "auto-init the judge from config" (vs. None which means "no judge").
 _AUTO: Literal["auto"] = "auto"
 
+# Thresholds.faithfulness_pass / faithfulness_weak defaults — calibrated for Claude's
+# claim-fraction score. _maybe_init_judge warns when a jev/cascade judge still has these.
+_DEFAULT_FAITHFULNESS_PASS = 0.85
+_DEFAULT_FAITHFULNESS_WEAK = 0.7
+
 
 class RunnerError(Exception):
     """Raised for non-recoverable runner errors (bad config, unknown evaluator, etc.)."""
@@ -97,7 +102,7 @@ class Runner:
     def _maybe_init_judge(self) -> Judge | None:
         """Best-effort judge instantiation. Returns None if credentials are missing."""
         try:
-            return build_judge(self.config.judge)
+            judge = build_judge(self.config.judge)
         except JudgeError as exc:
             print(
                 f"warning: {exc}\nproceeding without judge — WEAK verdicts and "
@@ -105,3 +110,28 @@ class Runner:
                 file=sys.stderr,
             )
             return None
+        self._maybe_warn_claude_calibrated_thresholds()
+        return judge
+
+    def _maybe_warn_claude_calibrated_thresholds(self) -> None:
+        """Jev's faithfulness score is a probability, not Claude's claim-fraction score —
+        the default thresholds are calibrated for Claude and are usually too strict for
+        Jev. Warn once, to stderr, rather than silently misgrading every jev/cascade run."""
+        thresholds = self.config.thresholds
+        if self.config.judge.provider not in ("jev", "cascade"):
+            return
+        if (
+            thresholds.faithfulness_pass != _DEFAULT_FAITHFULNESS_PASS
+            or thresholds.faithfulness_weak != _DEFAULT_FAITHFULNESS_WEAK
+        ):
+            return
+        print(
+            "warning: judge.provider is "
+            f"'{self.config.judge.provider}' but thresholds.faithfulness_pass/"
+            f"faithfulness_weak are still the defaults ({_DEFAULT_FAITHFULNESS_PASS}/"
+            f"{_DEFAULT_FAITHFULNESS_WEAK}). Those were calibrated for an LLM's "
+            "claim-fraction score and are likely too strict for Jev's probability score. "
+            "See the README's 'Judge backends' section for guidance on setting "
+            "thresholds for Jev.",
+            file=sys.stderr,
+        )
