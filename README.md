@@ -265,8 +265,8 @@ complete worked example.
 test set), with each judge at its default setting, Jev's F1 was 0.758 [95% CI 0.734–0.782] vs
 Claude Sonnet 5 0.721 [0.697–0.748], GLM Flash 0.753 and DeepSeek Flash 0.708. The registered
 Jev-vs-Claude test was inconclusive (+0.037, 90% CI +0.023 to +0.050, margin ±0.03), Jev tied
-GLM and beat DeepSeek. At each LLM's own operating point the LLM was equal or slightly better:
-Jev's edge comes from its default cutoff and a finer-grained score. Jev cost $0.046 per 1,000
+GLM and beat DeepSeek. At each LLM's own operating point the LLM was equal or slightly better
+(clearly so for DeepSeek): Jev's edge comes from its default cutoff and a finer-grained score. Jev cost $0.046 per 1,000
 judgments vs $6.54 for Claude at standard list price, but it caught far fewer hallucinations
 written by GPT-4/GPT-3.5 (small n), and its default cutoff needs calibrating on your own data.
 A Jev→Claude cascade added no F1. Full method, registration, limitations and reproduction:

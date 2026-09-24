@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jev vs Claude Sonnet 5 — RAGTruth benchmark</title>
+<title>Jev vs LLM judges — RAGTruth benchmark</title>
 <meta name="description" content="Results explorer: Jev, Claude Sonnet 5, DeepSeek Flash, GLM Flash and a Jev-to-Claude cascade judging RAGTruth's human-labeled RAG hallucinations.">
 <style>
   :root {
@@ -188,8 +188,8 @@
 </head>
 <body>
 <header class="page-header">
-  <h1>Jev vs Claude Sonnet 5 on RAGTruth</h1>
-  <p class="subtitle">Does a lightweight classifier judge RAG hallucinations as well as a frontier LLM judge — and can a Jev&rarr;Claude cascade match the frontier judge at a fraction of the cost?</p>
+  <h1>Jev vs LLM judges on RAGTruth</h1>
+  <p class="subtitle">Can Jev, a cheap yes/no decision model, catch RAG hallucinations as well as LLM judges (Claude Sonnet 5, DeepSeek Flash, GLM Flash) — and does a Jev&rarr;Claude cascade add anything?</p>
   <p class="links">
     <a href="../jev-ragtruth-benchmark.md">Read the write-up</a>
     <a href="https://github.com/Shauryagulati/ragverdict">ragverdict on GitHub</a>
@@ -355,7 +355,7 @@
   var JUDGE_LABELS = {
     jev_untuned: "Jev (untuned)",
     jev_tuned: "Jev (tuned on train)",
-    jev: "Jev",
+    jev: "Jev (tuned on train)",
     jev_pilot_setting: "Jev (pilot wording @ 0.5)",
     jev_pilot_state: "Jev (pilot state keys)",
     claude: "Claude Sonnet 5",
@@ -434,7 +434,7 @@
     if (headline.cascade) {
       var c = headline.cascade;
       rows.push([
-        "Cascade (Jev → Claude)",
+        "Cascade (tuned Jev → Claude)",
         "—",
         fmt(c.f1) + " (point estimate)",
         isNil(c.macro_f1) ? "—" : fmt(c.macro_f1) + " (point estimate)",
@@ -443,7 +443,7 @@
       ]);
     }
     wrap.appendChild(buildTable(
-      "Untuned headline: response-level F1, macro-F1, and AUROC with 95% bootstrap CIs, cost per 1,000 judgments.",
+      "Untuned headline: response-level F1, macro-F1, and AUROC with 95% bootstrap CIs. Cost per 1,000 judgments as billed (Claude via Batch API with prompt caching; standard live Claude is about $6.54 per 1k). The cascade row uses tuned Jev.",
       ["Judge", "n", "F1 (95% CI)", "Macro-F1 (95% CI)", "AUROC (95% CI)", "Cost / 1k"],
       rows
     ));
