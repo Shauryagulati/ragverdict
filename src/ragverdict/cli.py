@@ -9,6 +9,7 @@ import click
 
 from ragverdict import __version__
 from ragverdict.adapters.loader import AdapterLoadError
+from ragverdict.bench.cli import bench
 from ragverdict.config import ConfigError
 from ragverdict.runner import Runner, RunnerError
 
@@ -49,8 +50,6 @@ def run(config_path: Path, out_dir: Path, no_judge: bool) -> None:
         sys.exit(2)
     sys.exit(exit_code)
 
-
-from ragverdict.bench.cli import bench  # noqa: E402  (after cli group definition)
 
 cli.add_command(bench)
 
