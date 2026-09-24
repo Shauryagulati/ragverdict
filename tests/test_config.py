@@ -123,3 +123,15 @@ def test_unknown_provider_rejected(tmp_path: Path) -> None:
             adapter: {type: python, module: m, class: C}
             judge: {provider: openai}
         """))
+
+
+def test_demo_rag_jev_example_config_validates() -> None:
+    path = Path(__file__).parent.parent / "examples" / "demo_rag" / "config.jev.yaml"
+    cfg = load_config(path)
+    assert cfg.judge.provider == "cascade"
+    assert cfg.judge.model == "claude-sonnet-4-6"
+    assert cfg.judge.jev_model == "typesafe/jev-1.13"
+    assert cfg.judge.jev_base_url == "https://openrouter.ai/api"
+    assert cfg.judge.cascade_band == (0.1, 0.6)
+    assert cfg.thresholds.faithfulness_pass == 0.5
+    assert cfg.thresholds.faithfulness_weak == 0.2

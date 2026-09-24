@@ -1,0 +1,84 @@
+# Same demo RAG agent as config.yaml, but judged by Jev (a lightweight probabilistic
+# classifier) with a cascade to Claude, instead of Claude alone. See the README's
+# "Judge backends" section before copying this onto your own data.
+#
+# Why these choices:
+# - provider: cascade — asks Jev first, escalates to Claude only when Jev's probability
+#   falls inside cascade_band. Requires OPENROUTER_API_KEY (or TYPESAFE_API_KEY, if you
+#   change jev_base_url) and ANTHROPIC_API_KEY.
+# - jev_model / jev_base_url are left at their defaults; shown here for visibility.
+# - model: claude-sonnet-4-6 is the cascade's fallback judge, asked only on escalation.
+# - cascade_band: [0.1, 0.6] straddles both decision thresholds below (0.2 and 0.5), so
+#   any Jev score close enough to either boundary to change the verdict gets a second
+#   opinion from Claude instead of being trusted outright.
+# - thresholds.faithfulness_pass/weak are lowered from the Claude-calibrated defaults
+#   (0.85/0.7) to 0.5/0.2. Jev's faithfulness score is P(response is fully supported),
+#   not a claim fraction, so the Claude thresholds grade it far too strictly. 0.5/0.2 is
+#   a conservative starting point for the default faithfulness question, not a tuned
+#   value — calibrate against a labeled sample of your own data before trusting it in CI.
+
+adapter:
+  type: python
+  module: examples.demo_rag.adapter
+  class: DemoAdapter
+
+judge:
+  provider: cascade
+  model: claude-sonnet-4-6
+  jev_model: typesafe/jev-1.13
+  jev_base_url: https://openrouter.ai/api
+  cascade_band: [0.1, 0.6]
+
+thresholds:
+  faithfulness_pass: 0.5
+  faithfulness_weak: 0.2
+
+tests:
+  - name: tool_coverage_all
+    evaluator: tool_coverage
+    require_all_tools: true
+
+  - name: direct_retrieval_basics
+    evaluator: rag_quality
+    cases:
+      - query: "What revenue did Acme report in Q1 2025?"
+        must_mention: ["$5.2M"]
+        expects_citations: true
+      - query: "Who is the CTO of Acme?"
+        must_mention: ["Raj Patel"]
+        expects_citations: true
+      - query: "What is the flagship product?"
+        must_mention: ["RouteOps"]
+        expects_citations: true
+
+  - name: hallucination_guardrail
+    evaluator: rag_quality
+    cases:
+      - query: "What did Acme acquire in 2030?"
+        must_refuse: true
+        must_not_cite: true
+      - query: "Who is the Chief Marketing Officer at Acme?"
+        must_refuse: true
+        must_not_cite: true
+
+  - name: citation_audit_basics
+    evaluator: citation_audit
+    sample_queries:
+      - "What revenue did Acme report in Q1 2025?"
+      - "Who is the CTO of Acme?"
+      - "What is the flagship product?"
+
+  - name: edge_cases_battery
+    evaluator: edge_cases
+    cases:
+      - kind: long_input
+        length: 10000
+      - kind: multi_turn
+        turns:
+          - "Who is the CEO of Acme?"
+        final_query: "What was the name you just mentioned?"
+        must_reference: ["Jane Smith"]
+      - kind: contradiction
+        query: "What was the rationale for Acme's acquisition of XYZ Corp in 2030?"
+        false_premise: "Acme acquired XYZ Corp in 2030"
+      - kind: empty_input
