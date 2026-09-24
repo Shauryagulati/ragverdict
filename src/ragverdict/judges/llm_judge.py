@@ -16,8 +16,10 @@ schemas, and validation — only the transport differs.
 `thinking="disabled"` exists because models that think by default (Sonnet 5)
 can spend the output budget on reasoning and truncate the JSON answer.
 
-Caching caveat: rubrics are 400-600 tokens, below the minimum cacheable prefix
-on current models, so `cache_control` is wired but rarely hits.
+Caching: each rubric sits in a `cache_control` system block. On Claude Sonnet 5 the
+faithfulness rubric (~1,200 tokens with its schema) is served from the prompt cache
+(verified: `cache_read_input_tokens=1202`); on models with a larger minimum cacheable
+prefix the shorter rubrics may not be cached.
 """
 
 from __future__ import annotations
