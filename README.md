@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/Shauryagulati/ragverdict/actions/workflows/ci.yml/badge.svg)](https://github.com/Shauryagulati/ragverdict/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](https://github.com/Shauryagulati/ragverdict/blob/main/pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Shauryagulati/ragverdict/blob/main/LICENSE)
 
 **pytest for RAG agents.** Behavioral audits of any RAG system — tool coverage, retrieval
 quality, citation verification, hallucination guardrails — with PASS / FAIL / WEAK verdicts,
 not floating-point metric averages.
 
-![ragverdict running the bundled demo — all green](docs/demo.gif)
+![ragverdict running the bundled demo — all green](https://raw.githubusercontent.com/Shauryagulati/ragverdict/main/docs/demo.gif)
 
 ```
 ┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -155,8 +155,8 @@ class MyRagAdapter(RagAdapter):
 The runner inserts the current working directory into `sys.path` before resolving your
 `module:` import, so a project-local `my_app/` package just works.
 
-See [`examples/demo_rag/adapter.py`](./examples/demo_rag/adapter.py) for a complete
-reference adapter and [`examples/README.md`](./examples/README.md) for a walkthrough.
+See [`examples/demo_rag/adapter.py`](https://github.com/Shauryagulati/ragverdict/blob/main/examples/demo_rag/adapter.py) for a complete
+reference adapter and [`examples/README.md`](https://github.com/Shauryagulati/ragverdict/blob/main/examples/README.md) for a walkthrough.
 
 ## Verdicts
 
@@ -181,7 +181,7 @@ Tune thresholds via the `thresholds:` section of `config.yaml`. Exit codes:
 After each run, two files land in `./report/` (override with `--out-dir`):
 
 - **`report.json`** — Machine-readable: full per-test verdicts, metrics, judge artifacts,
-  per-citation audit detail. Stable shape — see [`docs/json-report-schema.md`](./docs/json-report-schema.md).
+  per-citation audit detail. Stable shape — see [`docs/json-report-schema.md`](https://github.com/Shauryagulati/ragverdict/blob/main/docs/json-report-schema.md).
 - **`report.md`** — Human-readable summary table.
 
 ## Judge backends
@@ -233,7 +233,7 @@ LLM — read this before switching:
 - **(f)** The benchmark's own tuned configuration used a different question wording
   ("B") and threshold `0.165`, chosen by fitting on the benchmark's train split — not
   something to copy blind onto your data. See
-  [docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md) for the wording and
+  [docs/jev-ragtruth-benchmark.md](https://github.com/Shauryagulati/ragverdict/blob/main/docs/jev-ragtruth-benchmark.md) for the wording and
   method.
 
 ### `cascade`
@@ -256,7 +256,7 @@ strictly inside `cascade_band`. Requires both `OPENROUTER_API_KEY` (or
 `TYPESAFE_API_KEY`) and `ANTHROPIC_API_KEY`. See the Jev guidance above — it applies to
 `cascade` too whenever Jev's score is used directly.
 
-See [`examples/demo_rag/config.jev.yaml`](./examples/demo_rag/config.jev.yaml) for a
+See [`examples/demo_rag/config.jev.yaml`](https://github.com/Shauryagulati/ragverdict/blob/main/examples/demo_rag/config.jev.yaml) for a
 complete worked example.
 
 ## Benchmark
@@ -270,10 +270,10 @@ GLM and beat DeepSeek. At each LLM's own operating point the LLM was equal or sl
 judgments vs $6.54 for Claude at standard list price, but it caught far fewer hallucinations
 written by GPT-4/GPT-3.5 (small n), and its default cutoff needs calibrating on your own data.
 A Jev→Claude cascade added no F1. Full method, registration, limitations and reproduction:
-[docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md). Interactive results page and case
+[docs/jev-ragtruth-benchmark.md](https://github.com/Shauryagulati/ragverdict/blob/main/docs/jev-ragtruth-benchmark.md). Interactive results page and case
 explorer: <https://shauryagulati.github.io/ragverdict/bench/> (source: `docs/bench/index.html`).
 
-![Jev vs Claude Sonnet 5, GLM Flash and DeepSeek Flash: F1 vs cost per 1,000 judgments](docs/bench/f1_vs_cost.png)
+![Jev vs Claude Sonnet 5, GLM Flash and DeepSeek Flash: F1 vs cost per 1,000 judgments](https://raw.githubusercontent.com/Shauryagulati/ragverdict/main/docs/bench/f1_vs_cost.png)
 
 To reproduce or explore the benchmark yourself:
 
@@ -379,4 +379,4 @@ v0.2 shipped the edge-case battery. Next up:
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](https://github.com/Shauryagulati/ragverdict/blob/main/LICENSE).

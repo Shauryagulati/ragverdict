@@ -56,7 +56,7 @@ Repository = "https://github.com/Shauryagulati/ragverdict"
 packages = ["src/ragverdict"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/ragverdict", "README.md", "LICENSE", "pyproject.toml"]
+include = ["/src/ragverdict", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [tool.mypy]
 python_version = "3.10"
