@@ -270,8 +270,8 @@ GLM and beat DeepSeek. At each LLM's own operating point the LLM was equal or sl
 judgments vs $6.54 for Claude at standard list price, but it caught far fewer hallucinations
 written by GPT-4/GPT-3.5 (small n), and its default cutoff needs calibrating on your own data.
 A Jev→Claude cascade added no F1. Full method, registration, limitations and reproduction:
-[docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md). Interactive case explorer:
-`docs/bench/index.html`.
+[docs/jev-ragtruth-benchmark.md](docs/jev-ragtruth-benchmark.md). Interactive results page and case
+explorer: <https://shauryagulati.github.io/ragverdict/bench/> (source: `docs/bench/index.html`).
 
 ![Jev vs Claude Sonnet 5, GLM Flash and DeepSeek Flash: F1 vs cost per 1,000 judgments](docs/bench/f1_vs_cost.png)
 
