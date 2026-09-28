@@ -50,7 +50,9 @@ jobs:
         run: ruff check src tests scripts
 
       - name: Mypy (--strict)
-        run: mypy
+        # Check against the runner's Python: third-party stubs (e.g. numpy >= 2.5 on 3.12)
+        # may use syntax newer than pyproject's 3.10 default.
+        run: mypy --python-version ${{ matrix.python-version }}
 
       - name: Pytest with coverage
         run: pytest --cov=ragverdict --cov-report=term-missing --cov-report=xml
