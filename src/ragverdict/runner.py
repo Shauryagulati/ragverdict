@@ -34,7 +34,7 @@ class Runner:
         config: Config,
         out_dir: Path,
         *,
-        judge: Judge | None | Literal["auto"] = "auto",
+        judge: Judge | Literal["auto"] | None = "auto",
     ) -> None:
         self.config = config
         self.out_dir = out_dir
@@ -48,7 +48,7 @@ class Runner:
         config_path: Path,
         out_dir: Path,
         *,
-        judge: Judge | None | Literal["auto"] = "auto",
+        judge: Judge | Literal["auto"] | None = "auto",
     ) -> Runner:
         return cls(load_config(config_path), out_dir, judge=judge)
 
